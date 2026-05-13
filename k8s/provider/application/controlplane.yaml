@@ -34,8 +34,8 @@ spec:
     spec:
       containers:
         - name: controlplane
-          image: ghcr.io/eclipse-edc/minimumviabledataspace/controlplane:latest
-          imagePullPolicy: Always
+          image: localhost/mvd-controlplane-local:latest
+          imagePullPolicy: Never
           envFrom:
             - configMapRef: { name: controlplane-config }
           ports:
@@ -84,6 +84,9 @@ spec:
     - name: protocol
       port: 8082
       targetPort: 8082
+    - name: control
+      port: 8083
+      targetPort: 8083
     - name: debug
       port: 1044
       targetPort: 1044

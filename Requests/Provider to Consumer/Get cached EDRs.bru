@@ -1,0 +1,39 @@
+meta {
+  name: Get cached EDRs
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{PROVIDER_CP}}/api/mgmt/v3/edrs/request
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "@context": [
+      "https://w3id.org/edc/connector/management/v2"
+    ],
+    "@type": "QuerySpec"
+  }
+}
+
+script:post-response {
+  if(res.getStatus() < 300 && res.getStatus() >= 200 && res.getBody().length > 0){
+      const edr = res.getBody()[0];
+      bru.setVar("P2C_TRANSFER_PROCESS_ID", edr["transferProcessId"]);
+  }
+
+  test("Status code is >=200 and <300", function () {
+      expect(res.getStatus() < 300 && res.getStatus() >= 200).to.be.true
+  });
+  test("P2C transfer process id is set", function(){
+      expect(bru.getVar("P2C_TRANSFER_PROCESS_ID")).not.to.be.undefined
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

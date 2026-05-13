@@ -1,0 +1,32 @@
+meta {
+  name: Download Data
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{PROVIDER_PUBLIC_URL}}/api/public
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: {{P2C_AUTHORIZATION}}
+}
+
+script:pre-request {
+  if(!(bru.getVar("P2C_AUTHORIZATION") !== undefined && bru.getVar("P2C_AUTHORIZATION") !== null)){
+      throw new Error('P2C authorization token is missing. Run "Get EDR DataAddress" first.');
+  }
+}
+
+script:post-response {
+  test("Status code is >=200 and <300", function () {
+      expect(res.getStatus() < 300 && res.getStatus() >= 200).to.be.true
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

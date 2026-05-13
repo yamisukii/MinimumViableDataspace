@@ -1,0 +1,47 @@
+meta {
+  name: Request Catalog
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{CONSUMER_CP}}/api/mgmt/v4/catalog/request
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "@context": [
+      "https://w3id.org/edc/connector/management/v2"
+    ],
+    "@type": "CatalogRequest",
+    "counterPartyAddress": "{{PROVIDER_DSP}}",
+    "counterPartyId": "{{PROVIDER_ID}}",
+    "protocol": "dataspace-protocol-http:2025-1",
+    "querySpec": {
+      "offset": 0,
+      "limit": 50
+    }
+  }
+}
+
+script:post-response {
+  test("Status code is >=200 and <300", function () {
+      expect(res.getStatus() < 300 && res.getStatus() >= 200).to.be.true
+
+      const datasets = res.getBody()["dataset"] || [];
+      const asset = datasets.find((ds) => ds["@id"] == "asset-1");
+      if (!asset) {
+          throw new Error('asset-1 was not found in provider catalog');
+      }
+
+      bru.setVar("C2P_POLICY_ID", asset["hasPolicy"][0]["@id"]);
+      console.log("C2P policy id", bru.getVar("C2P_POLICY_ID"));
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

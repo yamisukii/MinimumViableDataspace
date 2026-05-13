@@ -16,6 +16,8 @@ resources:
   - base/vault.yaml
   - base/gateway.yaml
   - base/postgres.yaml
+  - application/dataplane-config.yaml
+  - application/dataplane.yaml
   - application/controlplane-config.yaml
   - application/controlplane.yaml
   - application/controlplane-seed.yaml

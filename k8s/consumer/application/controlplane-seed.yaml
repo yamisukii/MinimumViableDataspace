@@ -53,8 +53,27 @@ spec:
               set -e
 
               MGMT_URL="http://controlplane.consumer.svc.cluster.local:8081/api/mgmt/v5beta/celexpressions"
+              ASSETS_URL="http://controlplane.consumer.svc.cluster.local:8081/api/mgmt/v4/assets"
+              POLICIES_URL="http://controlplane.consumer.svc.cluster.local:8081/api/mgmt/v4/policydefinitions"
+              CONTRACTDEFS_URL="http://controlplane.consumer.svc.cluster.local:8081/api/mgmt/v4/contractdefinitions"
+              DATAPLANE_URL="http://controlplane.consumer.svc.cluster.local:8081/api/mgmt/v4beta/dataplanes"
 
               # Posts to the management API, treating 409 (already exists) as success.
+              post() {
+                RESPONSE=$(curl -sS -w "\n%{http_code}" -X "$2" "$1" \
+                  -H "Content-Type: application/json" \
+                  -d "$3")
+                HTTP_STATUS=$(echo "${RESPONSE}" | tail -n1)
+                BODY=$(echo "${RESPONSE}" | sed '$d')
+                if [ "${HTTP_STATUS}" -eq 409 ]; then
+                  echo "Already exists (HTTP 409), skipping."
+                elif [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
+                  echo "Unexpected HTTP status: ${HTTP_STATUS}"
+                  echo "Response body: ${BODY}"
+                  exit 1
+                fi
+              }
+
               create_cel() {
                 HTTP_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -X POST "${MGMT_URL}" \
                   -H "Content-Type: application/json" \
@@ -63,6 +82,18 @@ spec:
                   echo "⚠ CEL Expression already exists (HTTP 409), skipping."
                 elif [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
                   echo "✗ Unexpected HTTP status: ${HTTP_STATUS}"
+                  exit 1
+                fi
+              }
+
+              register_dataplane() {
+                HTTP_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -X POST "${DATAPLANE_URL}" \
+                  -H "Content-Type: application/json" \
+                  -d "$1")
+                if [ "${HTTP_STATUS}" -eq 409 ]; then
+                  echo "Dataplane already exists (HTTP 409), skipping."
+                elif [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
+                  echo "Unexpected HTTP status: ${HTTP_STATUS}"
                   exit 1
                 fi
               }
@@ -111,6 +142,149 @@ spec:
               }'
 
               echo "✓ ManufacturerCredential CEL Expression done"
+
+              echo ""
+              echo "================================================"
+              echo "Step 3: Create Consumer Asset"
+              echo "================================================"
+
+              post "${ASSETS_URL}" "POST" '{
+                "@context": [
+                  "https://w3id.org/edc/connector/management/v2"
+                ],
+                "@id": "consumer-asset-1",
+                "@type": "Asset",
+                "properties": {
+                  "description": "Demo asset offered by the consumer company."
+                },
+                "dataAddress": {
+                  "@type": "DataAddress",
+                  "type": "HttpData",
+                  "baseUrl": "https://jsonplaceholder.typicode.com/users",
+                  "proxyPath": "true",
+                  "proxyQueryParams": "true"
+                }
+              }'
+
+              echo "Consumer asset done"
+
+              echo ""
+              echo "================================================"
+              echo "Step 4: Create Consumer Policies"
+              echo "================================================"
+
+              post "${POLICIES_URL}" "POST" '{
+                "@context": [
+                  "https://w3id.org/edc/connector/management/v2"
+                ],
+                "@type": "PolicyDefinition",
+                "@id": "consumer-require-membership",
+                "policy": {
+                  "@type": "Set",
+                  "permission": [
+                    {
+                      "action": "use",
+                      "constraint": {
+                        "leftOperand": "MembershipCredential",
+                        "operator": "eq",
+                        "rightOperand": "active"
+                      }
+                    }
+                  ]
+                }
+              }'
+
+              post "${POLICIES_URL}" "POST" '{
+                "@context": [
+                  "https://w3id.org/edc/connector/management/v2"
+                ],
+                "@type": "PolicyDefinition",
+                "@id": "consumer-require-manufacturer",
+                "policy": {
+                  "@type": "Set",
+                  "obligation": [
+                    {
+                      "action": "use",
+                      "constraint": {
+                          "leftOperand": "ManufacturerCredential",
+                        "operator": "eq",
+                        "rightOperand": "non_critical"
+                      }
+                    }
+                  ]
+                }
+              }'
+
+              echo "Consumer policies done"
+
+              echo ""
+              echo "================================================"
+              echo "Step 5: Create Consumer Contract Definition"
+              echo "================================================"
+
+              post "${CONTRACTDEFS_URL}" "POST" '{
+                "@context": [
+                  "https://w3id.org/edc/connector/management/v2"
+                ],
+                "@id": "consumer-demo-asset-def",
+                "@type": "ContractDefinition",
+                "accessPolicyId": "consumer-require-membership",
+                "contractPolicyId": "consumer-require-manufacturer",
+                "assetsSelector": {
+                  "@type": "Criterion",
+                  "operandLeft": "https://w3id.org/edc/v0.0.1/ns/id",
+                  "operator": "=",
+                  "operandRight": "consumer-asset-1"
+                }
+              }'
+
+              echo "Consumer contract definition done"
+
+              echo ""
+              echo "================================================"
+              echo "Step 6: Register consumer dataplane"
+              echo "================================================"
+
+              register_dataplane '{
+                "id": "consumer-dataplane",
+                "url": "http://dataplane.consumer.svc.cluster.local:8083/api/control/v1/dataflows",
+                "participantContextId": "did:web:identityhub.consumer.svc.cluster.local%3A7083:consumer",
+                "allowedTransferTypes": [ "HttpData-PULL" ],
+                "allowedSourceTypes": [ "HttpData" ],
+                "allowedDestTypes": [ "HttpProxy" ],
+                "labels": [],
+                "authorizationProfile": {
+                  "type": "none",
+                  "properties": {
+                    "type": "none"
+                  }
+                }
+              }'
+
+              echo "Consumer dataplane registered"
+
+              echo ""
+              echo "================================================"
+              echo "Step 7: Register provider dataplane for outgoing pulls"
+              echo "================================================"
+
+              register_dataplane '{
+                "id": "provider-dataplane",
+                "url": "http://dataplane.provider.svc.cluster.local:8083/api/control/v1/dataflows",
+                "participantContextId": "did:web:identityhub.consumer.svc.cluster.local%3A7083:consumer",
+                "allowedTransferTypes": [ "HttpData-PULL" ],
+                "allowedSourceTypes": [ "HttpData" ],
+                "allowedDestTypes": [ "HttpProxy" ],
+                "labels": [],
+                "authorizationProfile": {
+                  "type": "none",
+                  "properties": {
+                    "type": "none"
+                  }
+                }
+              }'
+
+              echo "Provider dataplane registered"
 
               echo ""
               echo "================================================"

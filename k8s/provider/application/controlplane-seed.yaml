@@ -169,7 +169,30 @@ spec:
               }'
 
               echo "✓ ManufacturerCredential CEL Expression done"
+              echo ""
+              echo "================================================"
+              echo "Step 2b: Create Asset 3"
+              echo "================================================"
 
+              post "${ASSETS_URL}" "POST" '{
+                  "@context": [
+                    "https://w3id.org/edc/connector/management/v2"
+                  ],
+                  "@id": "asset-3",
+                  "@type": "Asset",
+                  "properties": {
+                    "description": "My custom demo asset."
+                  },
+                  "dataAddress": {
+                    "@type": "DataAddress",
+                    "type": "HttpData",
+                    "baseUrl": "http://custom-photo-api.provider.svc.cluster.local/foto.png",
+                    "proxyPath": "true",
+                    "proxyQueryParams": "true"
+                  }
+                }'
+
+              echo "✓ Asset 3 done"
 
               echo ""
               echo "================================================"
@@ -300,7 +323,28 @@ spec:
                   "operandRight": "asset-2"
                 }
               }'
+              echo ""
+              echo "================================================"
+              echo "Step 7b: Create custom-asset-def"
+              echo "================================================"
 
+              post "${CONTRACTDEFS_URL}" "POST" '{
+                "@context": [
+                  "https://w3id.org/edc/connector/management/v2"
+                ],
+                "@id": "custom-asset-def",
+                "@type": "ContractDefinition",
+                "accessPolicyId": "require-membership",
+                "contractPolicyId": "require-manufacturer",
+                "assetsSelector": {
+                  "@type": "Criterion",
+                  "operandLeft": "https://w3id.org/edc/v0.0.1/ns/id",
+                  "operator": "=",
+                  "operandRight": "asset-3"
+                }
+              }'
+
+              echo "✓ custom-asset-def done"
               echo "✓ sensitive-only-def done"
               
               echo ""
@@ -309,12 +353,45 @@ spec:
               echo "================================================"
 
               post "${DATAPLANE_URL}" "POST" '{
-                "allowedSourceTypes": [ "HttpData", "HttpCertData" ],
+                "id": "provider-dataplane",
+                "url": "http://dataplane.provider.svc.cluster.local:8083/api/control/v1/dataflows",
+                "participantContextId": "did:web:identityhub.provider.svc.cluster.local%3A7083:provider",
                 "allowedTransferTypes": [ "HttpData-PULL" ],
-                "url": "http://dataplane.provider.svc.cluster.local:8083/api/control/v1/dataflows"
+                "allowedSourceTypes": [ "HttpData" ],
+                "allowedDestTypes": [ "HttpProxy" ],
+                "labels": [],
+                "authorizationProfile": {
+                  "type": "none",
+                  "properties": {
+                    "type": "none"
+                  }
+                }
               }'
               
-              echo "✓ dataplane registered"              
+              echo "✓ provider dataplane registered"
+
+              echo ""
+              echo "================================================"
+              echo "Step 9: Register consumer dataplane for outgoing pulls"
+              echo "================================================"
+
+              post "${DATAPLANE_URL}" "POST" '{
+                "id": "consumer-dataplane",
+                "url": "http://dataplane.consumer.svc.cluster.local:8083/api/control/v1/dataflows",
+                "participantContextId": "did:web:identityhub.provider.svc.cluster.local%3A7083:provider",
+                "allowedTransferTypes": [ "HttpData-PULL" ],
+                "allowedSourceTypes": [ "HttpData" ],
+                "allowedDestTypes": [ "HttpProxy" ],
+                "labels": [],
+                "authorizationProfile": {
+                  "type": "none",
+                  "properties": {
+                    "type": "none"
+                  }
+                }
+              }'
+
+              echo "✓ consumer dataplane registered"
               
               echo ""
               echo "================================================"

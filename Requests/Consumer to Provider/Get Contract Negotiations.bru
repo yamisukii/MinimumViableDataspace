@@ -1,0 +1,41 @@
+meta {
+  name: Get Contract Negotiations
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{CONSUMER_CP}}/api/mgmt/v4/contractnegotiations/request
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "@context": [
+      "https://w3id.org/edc/connector/management/v2"
+    ],
+    "@type": "QuerySpec"
+  }
+}
+
+script:post-response {
+  if(res.getStatus() < 300 && res.getStatus() >= 200 && res.getBody().length > 0){
+      const negotiation = res.getBody().find((el) => el["@id"] == bru.getVar("C2P_CONTRACT_NEGOTIATION_ID"));
+      if(negotiation){
+          bru.setVar("C2P_CONTRACT_AGREEMENT_ID", negotiation["contractAgreementId"]);
+      }
+  }
+
+  test("Status code is >=200 and <300", function () {
+      expect(res.getStatus() < 300 && res.getStatus() >= 200).to.be.true
+  });
+  test("C2P contract agreement id is set", function(){
+      expect(bru.getVar("C2P_CONTRACT_AGREEMENT_ID")).not.to.be.undefined
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

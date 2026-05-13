@@ -1,0 +1,47 @@
+meta {
+  name: Initiate Transfer
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{PROVIDER_CP}}/api/mgmt/v4/transferprocesses
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "@context": [
+      "https://w3id.org/edc/connector/management/v2"
+    ],
+    "@type": "TransferRequest",
+    "assetId": "consumer-asset-1",
+    "counterPartyAddress": "{{CONSUMER_DSP}}",
+    "connectorId": "{{CONSUMER_ID}}",
+    "contractId": "{{P2C_CONTRACT_AGREEMENT_ID}}",
+    "dataDestination": {
+      "@type": "DataAddress",
+      "type": "HttpProxy"
+    },
+    "protocol": "dataspace-protocol-http:2025-1",
+    "transferType": "HttpData-PULL"
+  }
+}
+
+script:pre-request {
+  if(!(bru.getVar("P2C_CONTRACT_AGREEMENT_ID") !== undefined && bru.getVar("P2C_CONTRACT_AGREEMENT_ID") !== null)){
+      throw new Error('P2C contract agreement id is missing. Run "Get Contract Negotiations" first.');
+  }
+}
+
+script:post-response {
+  test("Status code is >=200 and <300", function () {
+      expect(res.getStatus() < 300 && res.getStatus() >= 200).to.be.true
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

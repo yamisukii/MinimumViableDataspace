@@ -1,0 +1,6 @@
+﻿{
+  "@context": [
+    "https://w3id.org/edc/connector/management/v2"
+  ],
+  "@type": "QuerySpec"
+}

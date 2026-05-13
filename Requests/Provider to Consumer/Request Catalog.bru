@@ -1,0 +1,47 @@
+meta {
+  name: Request Catalog
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{PROVIDER_CP}}/api/mgmt/v4/catalog/request
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "@context": [
+      "https://w3id.org/edc/connector/management/v2"
+    ],
+    "@type": "CatalogRequest",
+    "counterPartyAddress": "{{CONSUMER_DSP}}",
+    "counterPartyId": "{{CONSUMER_ID}}",
+    "protocol": "dataspace-protocol-http:2025-1",
+    "querySpec": {
+      "offset": 0,
+      "limit": 50
+    }
+  }
+}
+
+script:post-response {
+  test("Status code is >=200 and <300", function () {
+      expect(res.getStatus() < 300 && res.getStatus() >= 200).to.be.true
+
+      const datasets = res.getBody()["dataset"] || [];
+      const asset = datasets.find((ds) => ds["@id"] == "consumer-asset-1");
+      if (!asset) {
+          throw new Error('consumer-asset-1 was not found in consumer catalog');
+      }
+
+      bru.setVar("P2C_POLICY_ID", asset["hasPolicy"][0]["@id"]);
+      console.log("P2C policy id", bru.getVar("P2C_POLICY_ID"));
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

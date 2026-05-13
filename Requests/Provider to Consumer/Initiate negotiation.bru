@@ -1,0 +1,59 @@
+meta {
+  name: Initiate negotiation
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{PROVIDER_CP}}/api/mgmt/v4/contractnegotiations
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "@context": [
+      "https://w3id.org/edc/connector/management/v2"
+    ],
+    "@type": "ContractRequest",
+    "counterPartyAddress": "{{CONSUMER_DSP}}",
+    "counterPartyId": "{{CONSUMER_ID}}",
+    "protocol": "dataspace-protocol-http:2025-1",
+    "policy": {
+      "@type": "Offer",
+      "@id": "{{P2C_POLICY_ID}}",
+      "assigner": "{{CONSUMER_ID}}",
+      "permission": [],
+      "prohibition": [],
+      "obligation": {
+        "action": "use",
+        "constraint": {
+          "leftOperand": "ManufacturerCredential",
+          "operator": "eq",
+          "rightOperand": "non_critical"
+        }
+      },
+      "target": "consumer-asset-1"
+    },
+    "callbackAddresses": []
+  }
+}
+
+script:pre-request {
+  if(!(bru.getVar("P2C_POLICY_ID") !== undefined && bru.getVar("P2C_POLICY_ID") !== null)){
+      throw new Error('P2C policy id is missing. Run "Request Catalog" first.');
+  }
+}
+
+script:post-response {
+  bru.setVar("P2C_CONTRACT_NEGOTIATION_ID", res.getBody()["@id"]);
+
+  test("Status code is >=200 and <300", function () {
+      expect(res.getStatus() < 300 && res.getStatus() >= 200).to.be.true
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

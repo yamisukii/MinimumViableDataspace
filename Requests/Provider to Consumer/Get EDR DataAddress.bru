@@ -1,0 +1,32 @@
+meta {
+  name: Get EDR DataAddress
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{PROVIDER_CP}}/api/mgmt/v3/edrs/{{P2C_TRANSFER_PROCESS_ID}}/dataaddress
+  body: none
+  auth: inherit
+}
+
+script:pre-request {
+  if(!(bru.getVar("P2C_TRANSFER_PROCESS_ID") !== undefined && bru.getVar("P2C_TRANSFER_PROCESS_ID") !== null)){
+      throw new Error('P2C transfer process id is missing. Run "Get cached EDRs" first.');
+  }
+}
+
+script:post-response {
+  if(res.getStatus() < 300 && res.getStatus() >= 200){
+      bru.setVar("P2C_AUTHORIZATION", res.getBody()["authorization"]);
+  }
+
+  test("Status code is >=200 and <300", function () {
+      expect(res.getStatus() < 300 && res.getStatus() >= 200).to.be.true
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

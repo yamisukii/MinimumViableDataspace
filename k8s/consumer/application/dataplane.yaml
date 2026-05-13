@@ -11,33 +11,34 @@
 #      Metaform Systems, Inc. - initial API and implementation
 #
 
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: controlplane
+  name: dataplane
   namespace: consumer
   labels:
-    app: controlplane
-    type: edc-app
+    app: dataplane
+    type: edcv-app
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: controlplane
+      app: dataplane
   template:
     metadata:
-      name: controlplane
       labels:
-        app: controlplane
+        app: dataplane
         platform: edcv
-        type: edc-app
+        type: edcv-app
     spec:
       containers:
-        - name: controlplane
-          image: localhost/mvd-controlplane-local:latest
+        - name: dataplane
+          image: localhost/mvd-dataplane-local:latest
           imagePullPolicy: Never
           envFrom:
-            - configMapRef: { name: controlplane-config }
+            - configMapRef:
+                name: dataplane-config
           ports:
             - containerPort: 1044
               name: debug-port
@@ -47,69 +48,100 @@ spec:
               port: 8080
             failureThreshold: 10
             periodSeconds: 5
-            timeoutSeconds: 120
+            timeoutSeconds: 30
           readinessProbe:
             httpGet:
               path: /api/check/readiness
               port: 8080
             failureThreshold: 10
             periodSeconds: 5
-            timeoutSeconds: 120
+            timeoutSeconds: 30
           startupProbe:
             httpGet:
               path: /api/check/startup
               port: 8080
             failureThreshold: 10
             periodSeconds: 5
-            timeoutSeconds: 120
-      restartPolicy: Always
+            timeoutSeconds: 30
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: controlplane
+  name: dataplane
   namespace: consumer
 spec:
   type: ClusterIP
   selector:
-    app: controlplane
+    app: dataplane
   ports:
     - name: health
       port: 8080
       targetPort: 8080
-    - name: management
-      port: 8081
-      targetPort: 8081
-    - name: protocol
-      port: 8082
-      targetPort: 8082
     - name: control
       port: 8083
       targetPort: 8083
-    - name: debug
-      port: 1044
-      targetPort: 1044
+    - name: certs
+      port: 8186
+      targetPort: 8186
+    - name: public
+      port: 11002
+      targetPort: 11002
 
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: controlplane
+  name: httproute-dataplane
   namespace: consumer
 spec:
   parentRefs:
     - name: consumer-gateway
-      kind: Gateway
-      sectionName: http
+      namespace: consumer
   hostnames:
-    - cp.consumer.localhost
+    - dp.consumer.localhost
   rules:
     - matches:
         - path:
             type: PathPrefix
-            value: /
+            value: /public
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
       backendRefs:
-        - name: controlplane
-          port: 8081
+        - name: dataplane
+          port: 11002
+          weight: 1
+
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /app/internal
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: dataplane
+          port: 8083
+          weight: 1
+
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /app/public
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: dataplane
+          port: 8186
           weight: 1

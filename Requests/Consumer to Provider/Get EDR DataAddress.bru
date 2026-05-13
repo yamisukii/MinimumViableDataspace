@@ -1,0 +1,32 @@
+meta {
+  name: Get EDR DataAddress
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{CONSUMER_CP}}/api/mgmt/v3/edrs/{{C2P_TRANSFER_PROCESS_ID}}/dataaddress
+  body: none
+  auth: inherit
+}
+
+script:pre-request {
+  if(!(bru.getVar("C2P_TRANSFER_PROCESS_ID") !== undefined && bru.getVar("C2P_TRANSFER_PROCESS_ID") !== null)){
+      throw new Error('C2P transfer process id is missing. Run "Get cached EDRs" first.');
+  }
+}
+
+script:post-response {
+  if(res.getStatus() < 300 && res.getStatus() >= 200){
+      bru.setVar("C2P_AUTHORIZATION", res.getBody()["authorization"]);
+  }
+
+  test("Status code is >=200 and <300", function () {
+      expect(res.getStatus() < 300 && res.getStatus() >= 200).to.be.true
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
