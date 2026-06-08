@@ -30,13 +30,28 @@ script:post-response {
   test("Status code is >=200 and <300", function () {
       expect(res.getStatus() < 300 && res.getStatus() >= 200).to.be.true
 
+      const assetId = bru.getVar("C2P_ASSET_ID") || "asset-3";
+      bru.setVar("C2P_ASSET_ID", assetId);
       const datasets = res.getBody()["dataset"] || [];
-      const asset = datasets.find((ds) => ds["@id"] == "asset-1");
+      const asset = datasets.find((ds) => ds["@id"] == assetId);
       if (!asset) {
-          throw new Error('asset-1 was not found in provider catalog');
+          throw new Error(`${assetId} was not found in provider catalog`);
       }
 
-      bru.setVar("C2P_POLICY_ID", asset["hasPolicy"][0]["@id"]);
+      const offer = asset["hasPolicy"][0];
+      const rule = (offer["obligation"] && offer["obligation"][0]) || (offer["permission"] && offer["permission"][0]);
+      const constraints = rule ? rule["constraint"] : [];
+      const constraint = Array.isArray(constraints) ? constraints[0] : constraints;
+
+      bru.setVar("C2P_POLICY_ID", offer["@id"]);
+      bru.setVar("C2P_POLICY_LEFT_OPERAND", constraint["leftOperand"]);
+      bru.setVar("C2P_POLICY_RIGHT_OPERAND", constraint["rightOperand"]);
+      bru.setVar("C2P_CONTRACT_NEGOTIATION_ID", null);
+      bru.setVar("C2P_CONTRACT_AGREEMENT_ID", null);
+      bru.setVar("C2P_TRANSFER_PROCESS_ID", null);
+      bru.setVar("C2P_AUTHORIZATION", null);
+      bru.setVar("C2P_DOWNLOAD_URL", null);
+      console.log("C2P asset id", assetId);
       console.log("C2P policy id", bru.getVar("C2P_POLICY_ID"));
   });
 }

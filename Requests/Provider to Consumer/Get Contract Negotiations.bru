@@ -21,9 +21,23 @@ body:json {
 
 script:post-response {
   if(res.getStatus() < 300 && res.getStatus() >= 200 && res.getBody().length > 0){
-      const negotiation = res.getBody().find((el) => el["@id"] == bru.getVar("P2C_CONTRACT_NEGOTIATION_ID"));
+      const assetId = bru.getVar("P2C_ASSET_ID") || "consumer-asset-1";
+      bru.setVar("P2C_ASSET_ID", assetId);
+
+      let negotiation;
+      if (bru.getVar("P2C_CONTRACT_NEGOTIATION_ID") !== undefined && bru.getVar("P2C_CONTRACT_NEGOTIATION_ID") !== null) {
+          negotiation = res.getBody().find((el) => el["@id"] == bru.getVar("P2C_CONTRACT_NEGOTIATION_ID"));
+      }
+      if (!negotiation || !negotiation["contractAgreementId"]) {
+          negotiation = res.getBody()
+              .filter((el) => el["assetId"] == assetId && el["state"] == "FINALIZED" && el["contractAgreementId"])
+              .sort((a, b) => (b["createdAt"] || 0) - (a["createdAt"] || 0))[0];
+      }
       if(negotiation){
           bru.setVar("P2C_CONTRACT_AGREEMENT_ID", negotiation["contractAgreementId"]);
+          bru.setVar("P2C_CONTRACT_NEGOTIATION_ID", negotiation["@id"]);
+          console.log("P2C negotiation id", bru.getVar("P2C_CONTRACT_NEGOTIATION_ID"));
+          console.log("P2C agreement id", bru.getVar("P2C_CONTRACT_AGREEMENT_ID"));
       }
   }
 

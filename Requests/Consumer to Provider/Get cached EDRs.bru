@@ -21,7 +21,14 @@ body:json {
 
 script:post-response {
   if(res.getStatus() < 300 && res.getStatus() >= 200 && res.getBody().length > 0){
-      const edr = res.getBody()[0];
+      const assetId = bru.getVar("C2P_ASSET_ID") || "asset-3";
+      bru.setVar("C2P_ASSET_ID", assetId);
+      const edr = res.getBody()
+          .filter((entry) => entry["assetId"] == assetId)
+          .sort((a, b) => (b["createdAt"] || 0) - (a["createdAt"] || 0))[0];
+      if (!edr) {
+          throw new Error(`No cached C2P EDR found for ${assetId}. Run "Initiate Transfer" first.`);
+      }
       bru.setVar("C2P_TRANSFER_PROCESS_ID", edr["transferProcessId"]);
   }
 

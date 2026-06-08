@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{CONSUMER_PUBLIC_URL}}/api/public
+  url: {{PROVIDER_PUBLIC_URL}}/api/public
   body: none
   auth: none
 }
@@ -17,6 +17,14 @@ headers {
 script:pre-request {
   if(!(bru.getVar("C2P_AUTHORIZATION") !== undefined && bru.getVar("C2P_AUTHORIZATION") !== null)){
       throw new Error('C2P authorization token is missing. Run "Get EDR DataAddress" first.');
+  }
+  if(!(bru.getVar("C2P_DOWNLOAD_URL") !== undefined && bru.getVar("C2P_DOWNLOAD_URL") !== null)){
+      const assetId = bru.getVar("C2P_ASSET_ID") || "asset-3";
+      const fallbackUrl = assetId == "asset-3"
+          ? bru.getVar("PROVIDER_PUBLIC_URL") + "/api/public"
+          : bru.getVar("CONSUMER_PUBLIC_URL") + "/api/public";
+      bru.setVar("C2P_DOWNLOAD_URL", fallbackUrl);
+      console.log("C2P fallback download url", bru.getVar("C2P_DOWNLOAD_URL"));
   }
 }
 

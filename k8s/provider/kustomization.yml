@@ -23,4 +23,5 @@ resources:
   - application/dataplane.yaml
   - application/controlplane-config.yaml
   - application/controlplane.yaml
+  - application/ingress.yaml
   - application/controlplane-seed.yaml

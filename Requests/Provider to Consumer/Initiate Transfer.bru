@@ -16,7 +16,7 @@ body:json {
       "https://w3id.org/edc/connector/management/v2"
     ],
     "@type": "TransferRequest",
-    "assetId": "consumer-asset-1",
+    "assetId": "{{P2C_ASSET_ID}}",
     "counterPartyAddress": "{{CONSUMER_DSP}}",
     "connectorId": "{{CONSUMER_ID}}",
     "contractId": "{{P2C_CONTRACT_AGREEMENT_ID}}",
@@ -30,6 +30,9 @@ body:json {
 }
 
 script:pre-request {
+  if(!(bru.getVar("P2C_ASSET_ID") !== undefined && bru.getVar("P2C_ASSET_ID") !== null)){
+      bru.setVar("P2C_ASSET_ID", "consumer-asset-1");
+  }
   if(!(bru.getVar("P2C_CONTRACT_AGREEMENT_ID") !== undefined && bru.getVar("P2C_CONTRACT_AGREEMENT_ID") !== null)){
       throw new Error('P2C contract agreement id is missing. Run "Get Contract Negotiations" first.');
   }

@@ -28,18 +28,21 @@ body:json {
       "obligation": {
         "action": "use",
         "constraint": {
-          "leftOperand": "ManufacturerCredential",
+          "leftOperand": "{{P2C_POLICY_LEFT_OPERAND}}",
           "operator": "eq",
-          "rightOperand": "non_critical"
+          "rightOperand": "{{P2C_POLICY_RIGHT_OPERAND}}"
         }
       },
-      "target": "consumer-asset-1"
+      "target": "{{P2C_ASSET_ID}}"
     },
     "callbackAddresses": []
   }
 }
 
 script:pre-request {
+  if(!(bru.getVar("P2C_ASSET_ID") !== undefined && bru.getVar("P2C_ASSET_ID") !== null)){
+      bru.setVar("P2C_ASSET_ID", "consumer-asset-1");
+  }
   if(!(bru.getVar("P2C_POLICY_ID") !== undefined && bru.getVar("P2C_POLICY_ID") !== null)){
       throw new Error('P2C policy id is missing. Run "Request Catalog" first.');
   }

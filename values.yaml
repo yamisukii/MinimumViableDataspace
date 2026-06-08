@@ -45,7 +45,7 @@ ports:
 # we enable gateway-api features
 providers:
   kubernetesGateway:
-    enabled: true
+    enabled: false
     experimentalChannel: true
   kubernetesCRD:
     # -- Load Kubernetes IngressRoute provider

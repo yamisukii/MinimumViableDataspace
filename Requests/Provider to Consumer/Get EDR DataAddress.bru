@@ -18,7 +18,18 @@ script:pre-request {
 
 script:post-response {
   if(res.getStatus() < 300 && res.getStatus() >= 200){
-      bru.setVar("P2C_AUTHORIZATION", res.getBody()["authorization"]);
+      const body = res.getBody();
+      const endpoint = body["endpoint"];
+      let downloadUrl = endpoint;
+      if (endpoint && endpoint.includes("dataplane.provider.svc.cluster.local")) {
+          downloadUrl = bru.getVar("PROVIDER_PUBLIC_URL") + "/api/public";
+      } else if (endpoint && endpoint.includes("dataplane.consumer.svc.cluster.local")) {
+          downloadUrl = bru.getVar("CONSUMER_PUBLIC_URL") + "/api/public";
+      }
+
+      bru.setVar("P2C_AUTHORIZATION", body["authorization"]);
+      bru.setVar("P2C_DOWNLOAD_URL", downloadUrl);
+      console.log("P2C download url", bru.getVar("P2C_DOWNLOAD_URL"));
   }
 
   test("Status code is >=200 and <300", function () {

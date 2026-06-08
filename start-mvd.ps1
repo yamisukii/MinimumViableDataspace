@@ -48,16 +48,16 @@ Write-Host "Updating Helm repo..."
 helm repo add traefik https://traefik.github.io/charts --force-update
 helm repo update
 
+Write-Host "Installing Gateway API..."
+kubectl apply --server-side --force-conflicts `
+  -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/experimental-install.yaml
+
 Write-Host "Installing Traefik..."
 helm upgrade --install --namespace traefik traefik traefik/traefik `
   --create-namespace `
   -f values.yaml
 
 kubectl rollout status deployment/traefik -n traefik --timeout=180s
-
-Write-Host "Installing Gateway API..."
-kubectl apply --server-side --force-conflicts `
-  -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/experimental-install.yaml
 
 Write-Host "Deploying MVD..."
 kubectl apply -k k8s

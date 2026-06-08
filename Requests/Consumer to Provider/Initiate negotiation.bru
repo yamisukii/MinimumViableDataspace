@@ -28,18 +28,21 @@ body:json {
       "obligation": {
         "action": "use",
         "constraint": {
-          "leftOperand": "ManufacturerCredential.part_types",
+          "leftOperand": "{{C2P_POLICY_LEFT_OPERAND}}",
           "operator": "eq",
-          "rightOperand": "non_critical"
+          "rightOperand": "{{C2P_POLICY_RIGHT_OPERAND}}"
         }
       },
-      "target": "asset-1"
+      "target": "{{C2P_ASSET_ID}}"
     },
     "callbackAddresses": []
   }
 }
 
 script:pre-request {
+  if(!(bru.getVar("C2P_ASSET_ID") !== undefined && bru.getVar("C2P_ASSET_ID") !== null)){
+      bru.setVar("C2P_ASSET_ID", "asset-3");
+  }
   if(!(bru.getVar("C2P_POLICY_ID") !== undefined && bru.getVar("C2P_POLICY_ID") !== null)){
       throw new Error('C2P policy id is missing. Run "Request Catalog" first.');
   }

@@ -16,7 +16,7 @@ body:json {
       "https://w3id.org/edc/connector/management/v2"
     ],
     "@type": "TransferRequest",
-    "assetId": "asset-1",
+    "assetId": "{{C2P_ASSET_ID}}",
     "counterPartyAddress": "{{PROVIDER_DSP}}",
     "connectorId": "{{PROVIDER_ID}}",
     "contractId": "{{C2P_CONTRACT_AGREEMENT_ID}}",
@@ -30,6 +30,9 @@ body:json {
 }
 
 script:pre-request {
+  if(!(bru.getVar("C2P_ASSET_ID") !== undefined && bru.getVar("C2P_ASSET_ID") !== null)){
+      bru.setVar("C2P_ASSET_ID", "asset-3");
+  }
   if(!(bru.getVar("C2P_CONTRACT_AGREEMENT_ID") !== undefined && bru.getVar("C2P_CONTRACT_AGREEMENT_ID") !== null)){
       throw new Error('C2P contract agreement id is missing. Run "Get Contract Negotiations" first.');
   }
