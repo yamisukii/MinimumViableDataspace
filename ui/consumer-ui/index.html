@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Consumer Portal</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Consumer Portal</h1>
+          <p>Provider asset access via EDC transfer flow</p>
+        </div>
+        <div class="status-pill" id="runtimeStatus">Idle</div>
+      </header>
+
+      <section class="layout">
+        <aside class="asset-panel">
+          <div class="panel-head">
+            <h2>Provider Catalog</h2>
+            <button id="refreshCatalog" type="button">Refresh</button>
+          </div>
+          <div id="assetList" class="asset-list"></div>
+        </aside>
+
+        <section class="work-panel">
+          <div class="summary">
+            <div>
+              <span class="label">Selected Asset</span>
+              <strong id="selectedAsset">None</strong>
+            </div>
+            <div>
+              <span class="label">Agreement</span>
+              <strong id="agreementId">None</strong>
+            </div>
+            <div>
+              <span class="label">Transfer</span>
+              <strong id="transferId">None</strong>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="negotiate" type="button" disabled>Negotiate</button>
+            <button id="resolveAgreement" type="button" disabled>Agreement</button>
+            <button id="startTransfer" type="button" disabled>Transfer</button>
+            <button id="resolveEdr" type="button" disabled>EDR</button>
+            <button id="download" type="button" disabled>Download</button>
+          </div>
+
+          <div class="timeline" id="timeline"></div>
+
+          <section class="result">
+            <div class="panel-head">
+              <h2>Data</h2>
+              <span id="contentType" class="label"></span>
+            </div>
+            <div id="dataView" class="data-view"></div>
+          </section>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
