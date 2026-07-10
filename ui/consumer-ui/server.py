@@ -14,8 +14,8 @@ CONSUMER_CP_HOST = "cp.consumer.localhost"
 PROVIDER_DP_HOST = "dp.provider.localhost"
 CONSUMER_DP_HOST = "dp.consumer.localhost"
 
-PROVIDER_DSP = "http://controlplane.provider.svc.cluster.local:8082/api/dsp/2025-1"
-PROVIDER_ID = "did:web:identityhub.provider.svc.cluster.local%3A7083:provider"
+PROVIDER_DSP = "http://controlplane-provider:8082/api/dsp/2025-1"
+PROVIDER_ID = "did:web:identityhub-provider%3A7083:provider"
 
 
 class ApiError(Exception):
@@ -174,9 +174,9 @@ def edrs(asset_id):
 def dataaddress(transfer_id):
     data = http_json("GET", CONSUMER_CP_HOST, f"/api/mgmt/v3/edrs/{transfer_id}/dataaddress")
     endpoint = data.get("endpoint", "")
-    if "dataplane.provider.svc.cluster.local" in endpoint:
+    if "dataplane-provider" in endpoint:
         download_url = "http://dp.provider.localhost/public/api/public"
-    elif "dataplane.consumer.svc.cluster.local" in endpoint:
+    elif "dataplane-consumer" in endpoint:
         download_url = "http://dp.consumer.localhost/public/api/public"
     else:
         download_url = endpoint

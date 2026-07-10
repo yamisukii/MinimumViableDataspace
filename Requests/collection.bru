@@ -14,10 +14,10 @@ auth:apikey {
 vars:pre-request {
   CONSUMER_CP: http://cp.consumer.localhost
   PROVIDER_CP: http://cp.provider.localhost
-  PROVIDER_DSP: http://controlplane.provider.svc.cluster.local:8082/api/dsp/2025-1
-  CONSUMER_DSP: http://controlplane.consumer.svc.cluster.local:8082/api/dsp/2025-1
-  PROVIDER_ID: did:web:identityhub.provider.svc.cluster.local%3A7083:provider
-  CONSUMER_ID: did:web:identityhub.consumer.svc.cluster.local%3A7083:consumer
+  PROVIDER_DSP: http://controlplane-provider:8082/api/dsp/2025-1
+  CONSUMER_DSP: http://controlplane-consumer:8082/api/dsp/2025-1
+  PROVIDER_ID: did:web:identityhub-provider%3A7083:provider
+  CONSUMER_ID: did:web:identityhub-consumer%3A7083:consumer
   PROVIDER_PUBLIC_URL: http://dp.provider.localhost/public
   CONSUMER_PUBLIC_URL: http://dp.consumer.localhost/public
   C2P_ASSET_ID: asset-3

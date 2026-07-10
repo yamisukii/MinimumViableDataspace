@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dataspace Onboarding</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header>
+    <h1>Dataspace &ndash; Teilnehmerverwaltung</h1>
+    <p class="subtitle">Unternehmen anlegen, Onboarding verfolgen, Registry einsehen</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Neues Unternehmen anlegen</h2>
+      <form id="create-form">
+        <div class="form-row">
+          <label for="name">Technischer Name *</label>
+          <input id="name" name="name" type="text" placeholder="z.B. mueller-gmbh"
+                 pattern="[a-z][a-z0-9-]{1,30}" required>
+          <small>klein, a-z 0-9 und &bdquo;-&ldquo;, wird Teil von URLs und DID</small>
+        </div>
+        <div class="form-row">
+          <label for="displayName">Anzeigename</label>
+          <input id="displayName" name="displayName" type="text" placeholder="z.B. Müller GmbH">
+        </div>
+        <div class="form-row">
+          <label for="description">Beschreibung</label>
+          <input id="description" name="description" type="text" placeholder="z.B. Auftragsfertiger für Metall-3D-Druck">
+        </div>
+        <div class="form-row checkbox-row">
+          <label><input id="demoAssets" name="demoAssets" type="checkbox">
+            Demo-Assets anlegen (asset-1/2/3 inkl. Foto-Asset)</label>
+        </div>
+        <button type="submit" id="create-btn">Unternehmen anlegen &amp; deployen</button>
+        <div id="create-error" class="error hidden"></div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Teilnehmer im Dataspace <span id="company-count" class="count"></span></h2>
+      <div id="companies"></div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

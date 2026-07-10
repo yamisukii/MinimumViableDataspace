@@ -1,0 +1,196 @@
+# Dataspace infrastructure stack: Traefik, Postgres, Keycloak, Vault, IssuerService.
+# Companies are deployed as separate stacks from compose/company/docker-compose.yml
+# and join via the shared external "dataspace" network.
+#
+# Start:  podman compose -p mvd-infra -f compose/infra/docker-compose.yml up -d
+# (the network must exist: podman network create dataspace)
+
+networks:
+  dataspace:
+    external: true
+    name: dataspace
+
+volumes:
+  postgres-data:
+  vault-data:
+
+services:
+  traefik:
+    image: traefik:v3.5
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./config/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./config/traefik/dynamic:/etc/traefik/dynamic:ro
+    networks:
+      dataspace:
+        aliases: [traefik]
+
+  postgres:
+    image: postgres:17.7-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      dataspace:
+        aliases: [postgres]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak
+    restart: unless-stopped
+    command: ["start-dev", "--health-enabled=true", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: "admin"
+      KC_BOOTSTRAP_ADMIN_USERNAME: "admin"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "admin"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: "http://keycloak:8080"
+      KC_HOSTNAME_STRICT: "false"
+      KC_PROXY: "edge"
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_LOG_LEVEL: "INFO"
+      KC_DB: "postgres"
+      KC_DB_URL: "jdbc:postgresql://postgres:5432/keycloak"
+      KC_DB_USERNAME: "kc"
+      KC_DB_PASSWORD: "kc"
+    volumes:
+      - ./config/keycloak:/opt/keycloak/data/import:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      dataspace:
+        aliases: [keycloak]
+
+  vault:
+    image: hashicorp/vault:latest
+    container_name: vault
+    restart: unless-stopped
+    entrypoint: ["sh", "/vault-entrypoint.sh"]
+    environment:
+      VAULT_ADDR: "http://127.0.0.1:8200"
+      SKIP_SETCAP: "true"
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - vault-data:/vault/file
+      - ./config/vault/vault-entrypoint.sh:/vault-entrypoint.sh:ro
+    healthcheck:
+      # exit code 0 = up and unsealed
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      dataspace:
+        aliases: [vault]
+
+  # One-shot: JWT auth setup, policies and shared secrets. Idempotent, runs on every `up`.
+  vault-bootstrap:
+    image: hashicorp/vault:latest
+    container_name: vault-bootstrap
+    restart: "no"
+    entrypoint: ["sh", "/vault-bootstrap.sh"]
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "root"
+      KC_HOST: "http://keycloak:8080"
+    volumes:
+      - ./config/vault/vault-bootstrap.sh:/vault-bootstrap.sh:ro
+    depends_on:
+      vault:
+        condition: service_healthy
+    networks:
+      dataspace: {}
+
+  issuerservice:
+    image: ghcr.io/eclipse-edc/minimumviabledataspace/issuerservice:latest
+    container_name: issuerservice
+    restart: unless-stopped
+    environment:
+      edc.hostname: "issuerservice"
+      edc.issuer.statuslist.signing.key.alias: "statuslist-signing-key"
+      edc.ih.api.superuser.key: "c3VwZXItdXNlcg==.c3VwZXItc2VjcmV0LWtleQo="
+      edc.iam.did.web.use.https: "false"
+      web.http.port: "10010"
+      web.http.path: "/api"
+      web.http.sts.port: "10011"
+      web.http.sts.path: "/api/sts"
+      web.http.issuance.port: "10012"
+      web.http.issuance.path: "/api/issuance"
+      web.http.issueradmin.port: "10013"
+      web.http.issueradmin.path: "/api/admin"
+      web.http.identity.port: "10015"
+      web.http.identity.path: "/api/identity"
+      web.http.did.port: "10016"
+      web.http.did.path: "/"
+      web.http.statuslist.port: "9999"
+      web.http.statuslist.path: "/statuslist"
+      edc.vault.hashicorp.url: "http://vault:8200"
+      edc.vault.hashicorp.token: "root"
+      edc.datasource.default.url: "jdbc:postgresql://postgres:5432/issuerservice"
+      edc.datasource.default.user: "issuer"
+      edc.datasource.default.password: "issuer"
+      edc.sql.schema.autocreate: "true"
+      edc.iam.accesstoken.jti.validation: "true"
+      edc.encryption.aes.key.alias: "aes-key-alias"
+      edc.iam.oauth2.issuer: "http://keycloak:8080/realms/mvd"
+      edc.iam.oauth2.jwks.url: "http://keycloak:8080/realms/mvd/protocol/openid-connect/certs"
+      # named datasource for the DatabaseAttestationSource (referenced by AttestationDefinitions)
+      edc.datasource.membership.url: "jdbc:postgresql://postgres:5432/issuerservice"
+      edc.datasource.membership.user: "issuer"
+      edc.datasource.membership.password: "issuer"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+    networks:
+      dataspace:
+        aliases: [issuerservice]
+
+  # One-shot: issuer tenant, attestation + credential definitions. Idempotent.
+  issuer-seed:
+    image: curlimages/curl:latest
+    container_name: issuer-seed
+    restart: "no"
+    entrypoint: ["sh", "/seed-issuer.sh"]
+    environment:
+      KC_HOST: "http://keycloak:8080"
+      ISSUER_URL: "http://issuerservice"
+      VAULT_URL: "http://vault:8200"
+      ISSUER_CLIENT_ID: "issuer"
+      ISSUER_CLIENT_SECRET: "issuer-secret"
+    volumes:
+      - ./config/issuer/seed-issuer.sh:/seed-issuer.sh:ro
+    depends_on:
+      vault-bootstrap:
+        condition: service_completed_successfully
+    networks:
+      dataspace: {}
+
+  # Demo backend for the provider's asset-3 (serves data/foto.png)
+  custom-photo-api:
+    image: nginx:alpine
+    container_name: custom-photo-api
+    restart: unless-stopped
+    volumes:
+      - ../../data:/usr/share/nginx/html:ro
+    networks:
+      dataspace:
+        aliases: [custom-photo-api]

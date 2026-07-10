@@ -18,7 +18,7 @@ Write-Host "Checking node..."
 kubectl get nodes
 
 Write-Host "Switching to repo..."
-cd "C:\Users\SEM\Documents\AM2Scale\MinimumViableDataspace"
+Set-Location $PSScriptRoot
 
 Write-Host "Building local EDC launchers..."
 .\gradlew.bat :launchers:controlplane:shadowJar :launchers:dataplane:shadowJar

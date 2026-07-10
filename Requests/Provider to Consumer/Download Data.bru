@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{P2C_DOWNLOAD_URL}}
+  url: {{CONSUMER_PUBLIC_URL}}/api/public
   body: none
   auth: none
 }
@@ -19,7 +19,7 @@ script:pre-request {
       throw new Error('P2C authorization token is missing. Run "Get EDR DataAddress" first.');
   }
   if(!(bru.getVar("P2C_DOWNLOAD_URL") !== undefined && bru.getVar("P2C_DOWNLOAD_URL") !== null)){
-      bru.setVar("P2C_DOWNLOAD_URL", bru.getVar("PROVIDER_PUBLIC_URL") + "/api/public");
+      bru.setVar("P2C_DOWNLOAD_URL", bru.getVar("CONSUMER_PUBLIC_URL") + "/api/public");
       console.log("P2C fallback download url", bru.getVar("P2C_DOWNLOAD_URL"));
   }
 }

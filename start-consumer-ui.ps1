@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-Set-Location "C:\Users\SEM\Documents\AM2Scale\MinimumViableDataspace"
+Set-Location $PSScriptRoot
 
 $port = 5173
 Write-Host "Starting Consumer UI on http://127.0.0.1:$port"

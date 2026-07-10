@@ -1,0 +1,60 @@
+# Routes for the shared infrastructure. Company routes are generated into this
+# directory as company-<name>.yml by compose/new-company.ps1 (watch=true picks them up).
+http:
+  routers:
+    keycloak:
+      rule: "Host(`keycloak.localhost`)"
+      entryPoints: [web]
+      service: keycloak
+
+    issuer-admin:
+      rule: "Host(`issuer.localhost`) && PathPrefix(`/admin`)"
+      entryPoints: [web]
+      middlewares: [strip-admin]
+      service: issuer-admin
+
+    issuer-cs:
+      rule: "Host(`issuer.localhost`) && PathPrefix(`/cs`)"
+      entryPoints: [web]
+      middlewares: [strip-cs]
+      service: issuer-identity
+
+    issuer-did:
+      rule: "Host(`issuer.localhost`)"
+      entryPoints: [web]
+      service: issuer-did
+
+    vault:
+      rule: "Host(`vault.localhost`)"
+      entryPoints: [web]
+      service: vault
+
+  middlewares:
+    strip-admin:
+      stripPrefix:
+        prefixes: ["/admin"]
+    strip-cs:
+      stripPrefix:
+        prefixes: ["/cs"]
+
+  services:
+    keycloak:
+      loadBalancer:
+        servers:
+          - url: "http://keycloak:8080"
+    issuer-admin:
+      loadBalancer:
+        servers:
+          - url: "http://issuerservice:10013"
+    issuer-identity:
+      loadBalancer:
+        servers:
+          - url: "http://issuerservice:10015"
+    issuer-did:
+      loadBalancer:
+        servers:
+          - url: "http://issuerservice:10016"
+    vault:
+      loadBalancer:
+        servers:
+          - url: "http://vault:8200"
