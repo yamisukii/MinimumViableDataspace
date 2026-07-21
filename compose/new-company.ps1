@@ -25,6 +25,8 @@ $envFile = Join-Path $companyDir ".env"
 $traefikFile = Join-Path $composeRoot "infra\config\traefik\dynamic\company-$Name.yml"
 
 New-Item -ItemType Directory -Force -Path $companyDir | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $companyDir "storage\assets") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $companyDir "storage\downloads") | Out-Null
 
 $seedDemo = if ($DemoAssets) { "true" } else { "false" }
 @"

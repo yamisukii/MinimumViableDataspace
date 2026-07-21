@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dataspace Portal</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+  <!-- ======================= LOGIN ======================= -->
+  <div id="login-view" class="login-wrap hidden">
+    <div class="login-card">
+      <h1>Dataspace Portal</h1>
+      <p class="muted">Melden Sie sich als Ihr Unternehmen an</p>
+      <form id="login-form">
+        <label for="login-company">Unternehmen</label>
+        <input id="login-company" type="text" placeholder="z.B. huber-ag" autocomplete="username" required>
+        <label for="login-password">Passwort</label>
+        <input id="login-password" type="password" value="password" autocomplete="current-password" required>
+        <button type="submit" id="login-btn">Anmelden</button>
+        <div id="login-error" class="error hidden"></div>
+      </form>
+      <p class="muted small">Authentifizierung über Keycloak (Realm „mvd&ldquo;).<br>
+        Standard-Passwort neuer Unternehmen: <code>password</code></p>
+    </div>
+  </div>
+
+  <!-- ======================= APP ======================= -->
+  <div id="app-view" class="hidden">
+    <header>
+      <div>
+        <h1 id="me-name">…</h1>
+        <div id="me-did" class="did"></div>
+      </div>
+      <button id="logout-btn" class="ghost">Abmelden</button>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="dataspace">Dataspace</button>
+      <button class="tab" data-tab="assets">Meine Assets</button>
+      <button class="tab" data-tab="reports">Eingehende Berichte <span id="inbox-count" class="pill"></span></button>
+      <button class="tab" data-tab="files">Meine Dateien</button>
+    </nav>
+
+    <main>
+      <!-- ---------- Tab: Dataspace ---------- -->
+      <section id="tab-dataspace" class="tab-panel">
+        <div class="grid-2">
+          <div class="panel">
+            <h2>Unternehmen im Dataspace</h2>
+            <div id="partners"></div>
+          </div>
+          <div class="panel">
+            <h2 id="catalog-title">Katalog</h2>
+            <p class="muted" id="catalog-hint">Wählen Sie links ein Unternehmen aus.</p>
+            <div id="catalog"></div>
+          </div>
+        </div>
+        <div class="panel" id="flow-panel" style="display:none">
+          <h2>Datenbezug: <span id="flow-asset"></span></h2>
+          <ol id="flow-steps" class="steps"></ol>
+          <div id="flow-result"></div>
+        </div>
+      </section>
+
+      <!-- ---------- Tab: Meine Assets ---------- -->
+      <section id="tab-assets" class="tab-panel hidden">
+        <div class="grid-2">
+          <div class="panel">
+            <h2>Neues Datenprodukt anbieten</h2>
+            <form id="upload-form">
+              <label>Datei (z.B. STL, STEP, 3MF) *</label>
+              <input type="file" id="up-file" required>
+              <label>Bauteil-Name *</label>
+              <input type="text" id="up-partName" placeholder="z.B. Halterung V2" required>
+              <label>Material</label>
+              <input type="text" id="up-material" placeholder="z.B. AlSi10Mg">
+              <label>Verfahren</label>
+              <input type="text" id="up-process" placeholder="z.B. LPBF / SLM">
+              <label>Beschreibung</label>
+              <input type="text" id="up-description" placeholder="Kurzbeschreibung">
+              <button type="submit" id="upload-btn">Hochladen &amp; im Katalog anbieten</button>
+              <div id="upload-msg" class="hidden"></div>
+            </form>
+          </div>
+          <div class="panel">
+            <h2>Meine angebotenen Assets</h2>
+            <div id="my-assets"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- Tab: Eingehende Berichte ---------- -->
+      <section id="tab-reports" class="tab-panel hidden">
+        <div class="panel">
+          <h2>Eingehende Qualitätsberichte</h2>
+          <p class="muted small">Berichte, die andere Unternehmen gezielt an Sie gerichtet haben
+            (per DID-beschränkter Policy – nur für Sie sichtbar).</p>
+          <div id="inbox"></div>
+        </div>
+        <div class="panel" id="report-flow-panel" style="display:none">
+          <h2>Bericht beziehen: <span id="report-flow-title"></span></h2>
+          <ol id="report-flow-steps" class="steps"></ol>
+          <div id="report-flow-result"></div>
+        </div>
+      </section>
+
+      <!-- ---------- Tab: Meine Dateien ---------- -->
+      <section id="tab-files" class="tab-panel hidden">
+        <div class="grid-2">
+          <div class="panel">
+            <h2>Empfangene Dateien</h2>
+            <p class="muted small">Zu Bauteil-Dateien können Sie einen Qualitätsbericht
+              an den ursprünglichen Anbieter zurücksenden.</p>
+            <div id="my-downloads"></div>
+          </div>
+          <div class="panel">
+            <h2>Hochgeladene Dateien</h2>
+            <div id="my-uploads"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Qualitätsbericht-Dialog -->
+      <div id="report-modal" class="modal hidden">
+        <div class="modal-card">
+          <h2>Qualitätsbericht senden</h2>
+          <p class="muted small" id="report-modal-sub"></p>
+          <form id="report-form">
+            <label>Berichtsdatei (PDF, CSV, ...) *</label>
+            <input type="file" id="rep-file" required>
+            <label>Titel *</label>
+            <input type="text" id="rep-title" placeholder="z.B. Prüfbericht Halterung V2" required>
+            <label>Ergebnis</label>
+            <select id="rep-verdict">
+              <option value="bestanden">bestanden</option>
+              <option value="mit Auflagen">mit Auflagen</option>
+              <option value="nicht bestanden">nicht bestanden</option>
+            </select>
+            <label>Anmerkungen</label>
+            <input type="text" id="rep-notes" placeholder="z.B. Maßhaltigkeit i.O., Oberfläche geprüft">
+            <div class="modal-actions">
+              <button type="button" id="report-cancel" class="ghost-dark">Abbrechen</button>
+              <button type="submit" id="report-send">Senden</button>
+            </div>
+            <div id="report-msg" class="hidden"></div>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

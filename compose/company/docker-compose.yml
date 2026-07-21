@@ -178,6 +178,19 @@ services:
       dataspace:
         aliases: ["identityhub-${COMPANY}"]
 
+  # Company file store: serves uploaded asset files to the dataplanes.
+  # Files live on the host in compose/companies/<name>/storage/assets
+  # (uploads happen through the portal backend, which writes there directly).
+  filestore:
+    image: nginx:alpine
+    container_name: fs-${COMPANY}
+    restart: unless-stopped
+    volumes:
+      - ../companies/${COMPANY}/storage/assets:/usr/share/nginx/html:ro
+    networks:
+      dataspace:
+        aliases: ["filestore-${COMPANY}"]
+
   # One-shot: holder in IssuerService, participant context in IdentityHub,
   # credential issuance (Membership + Manufacturer). Idempotent.
   seed-identity:

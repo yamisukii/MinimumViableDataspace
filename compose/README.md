@@ -100,6 +100,49 @@ Manuell entfernen: `podman compose -p mvd-<name> down` (Volumes/DB-Inhalte bleib
 plus Löschen von `companies/<name>/` und `infra/config/traefik/dynamic/company-<name>.yml`,
 danach `podman restart traefik`.
 
+## Dataspace-Portal (Multi-Tenant-UI)
+
+```powershell
+.\..\start-portal.ps1        # http://127.0.0.1:5180  (vom Repo-Root: .\start-portal.ps1)
+```
+
+Jedes Unternehmen loggt sich mit seinem **Keycloak-Account** ein
+(Realm `mvd`, Username = Firmenname, Standard-Passwort `password`;
+User und Portal-Client werden beim ersten Login automatisch angelegt/repariert).
+Danach:
+
+- **Dataspace-Tab**: alle anderen Teilnehmer (aus der Registry), deren Kataloge
+  durchsuchen, Datenbezug per Klick mit Schritt-Anzeige
+  (Negotiation → Agreement → Transfer → EDR → Download)
+- **Meine Assets**: Datei hochladen (STL/STEP/3MF/...) mit 3D-Druck-Metadaten
+  (Bauteil, Material, Verfahren) → wird automatisch EDC-Asset + Contract
+  Definition und ist sofort im Katalog der anderen sichtbar
+- **Eingehende Berichte**: gezielt an das eigene Unternehmen gerichtete
+  Qualitätsberichte (DID-beschränkt), per Klick beziehbar
+- **Meine Dateien**: empfangene und hochgeladene Dateien; zu empfangenen
+  Bauteilen kann ein Qualitätsbericht an den Anbieter zurückgesendet werden
+
+Dateiablage pro Firma (persistent, im Explorer sichtbar):
+`compose/companies/<name>/storage/assets` (Angebote, serviert vom
+`filestore-<name>`-Container) und `.../storage/downloads` (empfangene Daten,
+je Datei eine `.meta.json` mit Herkunft/Provenance).
+
+### Qualitätsdaten-Rückfluss (gerichtete Berichte)
+
+Zu einer empfangenen Bauteil-Datei kann das beziehende Unternehmen einen
+**Qualitätsbericht gezielt an den ursprünglichen Anbieter** zurücksenden
+(Tab „Meine Dateien" → „Qualitätsbericht senden"). Der Bericht wird ein Asset
+mit einer **DID-beschränkten Policy**: nur die DID des Ziel-Unternehmens darf
+ihn sehen und beziehen. Der Empfänger findet ihn unter „Eingehende Berichte"
+und bezieht ihn über denselben Protokollweg. Andere Teilnehmer sehen den
+Bericht nicht einmal im Katalog.
+
+Technisch: Eine eigene EDC-Extension im Controlplane-Launcher
+([IdentityClaimMapperExtension](../launchers/controlplane/src/main/java/org/eclipse/edc/mvd/controlplane/identityclaim/IdentityClaimMapperExtension.java))
+stellt die verifizierte Gegenpartei-DID der Policy-Engine als
+`ctx.agent.claims.identity` bereit. Darauf setzt die CEL-Expression
+`holder-did-cel` (leftOperand `HolderDid`) auf, die der Company-Seed anlegt.
+
 ## Endpunkte
 
 | Dienst | URL |

@@ -9,3 +9,9 @@ out/
 
 .terraform*
 *terraform.tfstate*
+# company file storage (runtime data)
+compose/companies/*/storage/
+
+# python bytecode
+__pycache__/
+*.pyc

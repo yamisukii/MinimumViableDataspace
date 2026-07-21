@@ -123,6 +123,8 @@ def company_metadata(name):
 def create_company_files(name, display_name, description, demo_assets):
     company_dir = COMPANIES_DIR / name
     company_dir.mkdir(parents=True, exist_ok=True)
+    (company_dir / "storage" / "assets").mkdir(parents=True, exist_ok=True)
+    (company_dir / "storage" / "downloads").mkdir(parents=True, exist_ok=True)
     (company_dir / ".env").write_text(env_file_content(name, demo_assets), encoding="ascii")
     (company_dir / "company.json").write_text(json.dumps({
         "name": name,

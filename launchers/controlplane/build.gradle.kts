@@ -19,6 +19,12 @@ plugins {
 }
 
 dependencies {
+    // compile-time SPIs for the custom identity claim mapper (present at runtime via the BOM)
+    compileOnly("org.eclipse.edc:core-spi:0.17.0")
+    compileOnly("org.eclipse.edc:runtime-metamodel:0.17.0")
+    compileOnly("org.eclipse.edc:participant-spi:0.17.0")
+    compileOnly(libs.edc.core.cel)
+
     runtimeOnly(project(":extensions:data-plane-registration"))
     runtimeOnly(libs.edc.api.cel.v5)
     runtimeOnly(libs.edc.core.cel)

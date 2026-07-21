@@ -72,6 +72,26 @@ post "${CEL_URL}" '{
 }'
 echo "manufacturer-cel done"
 
+# DID restriction: matches the verified counterparty DID exposed by the custom
+# IdentityClaimMapper (ctx.agent.claims.identity). Used for directed quality-data
+# feedback - a report only the original data provider (its DID) may access.
+post "${CEL_URL}" '{
+  "@context": [
+    "https://w3id.org/edc/connector/management/v2"
+  ],
+  "@type": "CelExpression",
+  "@id": "holder-did-cel",
+  "leftOperand": "HolderDid",
+  "description": "Restricts access to a specific counterparty DID",
+  "scopes": [
+    "catalog",
+    "contract.negotiation",
+    "transfer.process"
+  ],
+  "expression": "ctx.agent.claims.identity == this.rightOperand"
+}'
+echo "holder-did-cel done"
+
 echo ""
 echo "================================================"
 echo "Step 2: Create company policies"
