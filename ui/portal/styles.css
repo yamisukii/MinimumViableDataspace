@@ -238,3 +238,7 @@ button.ghost-dark { background: #e8eef2; color: var(--text); }
   padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; background: #fff;
 }
 #relationships select { min-width: 120px; }
+
+.score { color: var(--muted); font-size: 11px; }
+#search-q { flex: 1; min-width: 240px; }
+#search-results .dataset-head span { display: inline-flex; align-items: center; gap: 8px; }

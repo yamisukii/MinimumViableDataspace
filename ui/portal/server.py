@@ -90,6 +90,53 @@ def mgmt(company, method, path, payload=None):
                      headers={"X-Api-Key": API_KEY})
 
 
+# ---------------------------------------------------------------- discovery
+
+DISCOVERY_URL = "http://127.0.0.1:5185"
+
+
+def discovery_call(method, path, payload=None, timeout=30):
+    body = json.dumps(payload).encode("utf-8") if payload is not None else None
+    req = urllib.request.Request(f"{DISCOVERY_URL}{path}", data=body, method=method)
+    if body is not None:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+            return json.loads(raw.decode("utf-8")) if raw else None
+    except urllib.error.HTTPError as e:
+        raise ApiError(e.code, e.read().decode("utf-8", errors="replace")) from e
+    except urllib.error.URLError as e:
+        raise ApiError(503, f"Discovery-Service nicht erreichbar ({e})") from e
+
+
+def publish_asset_to_discovery(company, asset_id, properties):
+    """Publish an asset's KG projection to the discovery index. Best-effort."""
+    props = properties or {}
+    attrs = {
+        "partName": props.get("am2scale:partName") or props.get("name") or props.get("edc:name") or asset_id,
+        "materialkurztext": props.get("am2scale:material") or props.get("am2scale:materialkurztext", ""),
+        "werkstoff": props.get("am2scale:werkstoff", ""),
+        "abmasse": props.get("am2scale:abmasse", ""),
+        "verfahren": props.get("am2scale:process", ""),
+    }
+    try:
+        tier = int(props.get("am2scale:tier", 1))
+    except (TypeError, ValueError):
+        tier = 1
+    try:
+        discovery_call("POST", "/publish", {
+            "owner": company,
+            "did": f"did:web:identityhub-{company}%3A7083:{company}",
+            "assetId": asset_id,
+            "fileTier": tier,
+            "attrs": attrs,
+        })
+        return True
+    except ApiError:
+        return False
+
+
 # ---------------------------------------------------------------- keycloak
 
 def kc_form(path, fields, timeout=15):
@@ -298,6 +345,24 @@ def effective_tier(viewer_company, viewer_level, owner_company):
     return min(company_cap, person_cap)
 
 
+def build_allow_map(me, level):
+    """Per-owner tier cap for a person's cross-dataspace discovery search."""
+    return {c["name"]: effective_tier(me, level, c["name"]) for c in registry()}
+
+
+def find_offer(me, partner_name, asset_id, cap):
+    """Fetch the catalog offer for one asset if it is within the viewer's tier."""
+    partner = registry_entry(partner_name)
+    if not partner:
+        return None
+    for ds in request_catalog(me, partner):
+        if ds.get("id") == asset_id:
+            if asset_tier(ds.get("properties")) > cap:
+                return None
+            return ds
+    return None
+
+
 # ----------------------------------------------------------------- catalog
 
 def simplify_dataset(ds):
@@ -383,6 +448,8 @@ def create_asset(company, filename, fields):
         "description": fields.get("description", ""),
         "am2scale:partName": fields.get("partName", ""),
         "am2scale:material": fields.get("material", ""),
+        "am2scale:werkstoff": fields.get("werkstoff", ""),
+        "am2scale:abmasse": fields.get("abmasse", ""),
         "am2scale:process": fields.get("process", ""),
         "am2scale:tier": str(tier),
         "am2scale:fileName": filename,
@@ -419,6 +486,7 @@ def create_asset(company, filename, fields):
     except ApiError as e:
         if e.status != 409:
             raise
+    publish_asset_to_discovery(company, asset_id, properties)
     return asset_id
 
 
@@ -678,6 +746,19 @@ class Handler(BaseHTTPRequestHandler):
                 me = self.require_session()
                 if me:
                     self.send_json(200, {"reports": report_inbox(me)})
+            elif path == "/api/offer":
+                sess = self.require_full_session()
+                if not sess:
+                    return
+                qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                partner_name = (qs.get("partner") or [""])[0]
+                asset_id = (qs.get("assetId") or [""])[0]
+                cap = effective_tier(sess["company"], sess.get("level"), partner_name)
+                offer = find_offer(sess["company"], partner_name, asset_id, cap)
+                if not offer:
+                    self.send_json(403, {"error": "Kein Zugriff auf dieses Asset (Level) oder nicht gefunden."})
+                    return
+                self.send_json(200, {"offer": offer})
             elif path == "/api/admin/persons":
                 sess = self.require_admin()
                 if sess:
@@ -898,6 +979,40 @@ class Handler(BaseHTTPRequestHandler):
                 asset_id, target = create_report_asset(me, filename, fields)
                 self.send_json(201, {"assetId": asset_id, "target": target,
                                      "fileName": filename, "size": len(payload)})
+            elif path == "/api/search":
+                sess = self.require_full_session()
+                if not sess:
+                    return
+                b = self.read_json()
+                query = (b.get("query") or "").strip()
+                if not query:
+                    self.send_json(400, {"error": "Suchbegriff fehlt"})
+                    return
+                allow = build_allow_map(sess["company"], sess.get("level"))
+                res = discovery_call("POST", "/search",
+                                     {"query": query, "allow": allow, "limit": 25})
+                names = {c["name"]: c["displayName"] for c in registry()}
+                for h in res.get("hits", []):
+                    h["ownerDisplay"] = names.get(h["owner"], h["owner"])
+                    h["own"] = (h["owner"] == sess["company"])
+                self.send_json(200, res)
+            elif path == "/api/search/reindex":
+                sess = self.require_full_session()
+                if not sess:
+                    return
+                me = sess["company"]
+                rows = mgmt(me, "POST", "/api/mgmt/v4/assets/request", {
+                    "@context": ["https://w3id.org/edc/connector/management/v2"],
+                    "@type": "QuerySpec",
+                }) or []
+                n = 0
+                for r in rows:
+                    props = r.get("properties", {})
+                    if props.get("am2scale:reportType") == "quality":
+                        continue  # reports are DID-restricted, not part of discovery
+                    if publish_asset_to_discovery(me, r.get("@id"), props):
+                        n += 1
+                self.send_json(200, {"indexed": n})
             elif path == "/api/admin/persons":
                 sess = self.require_admin()
                 if not sess:

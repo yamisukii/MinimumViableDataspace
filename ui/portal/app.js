@@ -273,6 +273,8 @@ $("upload-form").addEventListener("submit", async (ev) => {
     fd.append("file", $("up-file").files[0]);
     fd.append("partName", $("up-partName").value);
     fd.append("material", $("up-material").value);
+    fd.append("werkstoff", $("up-werkstoff").value);
+    fd.append("abmasse", $("up-abmasse").value);
     fd.append("process", $("up-process").value);
     fd.append("description", $("up-description").value);
     fd.append("tier", $("up-tier").value);
@@ -477,6 +479,81 @@ $("person-form").addEventListener("submit", async (ev) => {
     msg.textContent = e.message;
   }
 });
+
+// ------------------------------------------------------------- vector search
+$("search-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const msg = $("search-msg");
+  const el = $("search-results");
+  msg.className = "hidden";
+  el.innerHTML = '<p class="muted">Suche…</p>';
+  try {
+    const data = await api("/api/search", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: $("search-q").value }),
+    });
+    const hits = data.hits || [];
+    el.innerHTML = hits.length ? "" : '<p class="muted">Keine Treffer. (Ggf. erst „Reindex" klicken.)</p>';
+    hits.forEach((h) => {
+      const attrRows = Object.entries(h.attributes || {})
+        .sort((a, b) => a[1].tier - b[1].tier)
+        .map(([k, v]) => `<tr><td>${esc(k)} ${tierBadge(v.tier)}</td><td>${esc(v.value)}</td></tr>`)
+        .join("");
+      const withheld = (h.withheld || []).length
+        ? `<div class="muted small">🔒 durch Level verborgen: ${h.withheld.map(esc).join(", ")}</div>` : "";
+      const btn = h.retrievable
+        ? `<button class="mini">Beziehen</button>`
+        : `<span class="muted small">kein Bezug (Level)</span>`;
+      const div = document.createElement("div");
+      div.className = "dataset";
+      div.innerHTML = `
+        <div class="dataset-head">
+          <strong>${esc((h.attributes.partName && h.attributes.partName.value) || h.assetId)}</strong>
+          <span>${tierBadge(h.fileTier)} <span class="score">score ${h.score}</span> ${btn}</span>
+        </div>
+        <div class="muted small">Anbieter: <strong>${esc(h.ownerDisplay)}</strong>${h.own ? " (eigenes)" : ""}
+          · Asset: <code>${esc(h.assetId)}</code></div>
+        ${attrRows ? `<table class="kv small">${attrRows}</table>` : ""}
+        ${withheld}`;
+      const b = div.querySelector("button");
+      if (b) b.addEventListener("click", () => consumeHit(h));
+      el.appendChild(div);
+    });
+  } catch (e) {
+    el.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+  }
+});
+
+$("reindex-btn").addEventListener("click", async () => {
+  const msg = $("search-msg");
+  msg.className = "hidden";
+  try {
+    const data = await api("/api/search/reindex", { method: "POST" });
+    msg.className = "success";
+    msg.textContent = `${data.indexed} eigene Assets (neu) indexiert.`;
+  } catch (e) {
+    msg.className = "error";
+    msg.textContent = e.message;
+  }
+});
+
+async function consumeHit(h) {
+  $("search-flow-panel").style.display = "";
+  $("search-flow-title").textContent =
+    `${(h.attributes.partName && h.attributes.partName.value) || h.assetId} (von ${h.ownerDisplay})`;
+  $("search-flow-steps").innerHTML = "";
+  $("search-flow-result").innerHTML = "";
+  $("search-flow-panel").scrollIntoView({ behavior: "smooth" });
+  try {
+    if (h.own) throw new Error("Eigenes Asset – kein Bezug nötig.");
+    const { offer } = await api(
+      `/api/offer?partner=${encodeURIComponent(h.owner)}&assetId=${encodeURIComponent(h.assetId)}`);
+    await runFlow({ name: h.owner, displayName: h.ownerDisplay }, offer,
+                  "search-flow-steps", "search-flow-result");
+  } catch (e) {
+    stepEl("search-flow-steps", "").fail(e.message);
+  }
+}
 
 init();
 // refresh the inbox badge shortly after login

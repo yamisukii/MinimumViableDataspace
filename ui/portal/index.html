@@ -42,6 +42,7 @@
 
     <nav class="tabs">
       <button class="tab active" data-tab="dataspace">Dataspace</button>
+      <button class="tab" data-tab="search">Suche</button>
       <button class="tab" data-tab="assets">Meine Assets</button>
       <button class="tab" data-tab="reports">Eingehende Berichte <span id="inbox-count" class="pill"></span></button>
       <button class="tab" data-tab="files">Meine Dateien</button>
@@ -69,6 +70,28 @@
         </div>
       </section>
 
+      <!-- ---------- Tab: Suche (Vektorsuche über KG) ---------- -->
+      <section id="tab-search" class="tab-panel hidden">
+        <div class="panel">
+          <h2>Semantische Suche über den Dataspace</h2>
+          <p class="muted small">Sucht über die freigegebenen Stammdaten (Materialkurztext,
+            Werkstoff, Abmaße) aller Teilnehmer. Ergebnisse und Detailtiefe richten sich
+            nach Ihrem Level (Beziehung × Position).</p>
+          <form id="search-form" class="inline-form">
+            <input type="text" id="search-q" placeholder="z.B. edelstahl halterung klein, ~20mm" required>
+            <button type="submit" id="search-btn">Suchen</button>
+            <button type="button" id="reindex-btn" class="ghost-dark" title="Eigene Assets neu indexieren">Reindex</button>
+          </form>
+          <div id="search-msg" class="hidden"></div>
+          <div id="search-results"></div>
+        </div>
+        <div class="panel" id="search-flow-panel" style="display:none">
+          <h2>Beziehen: <span id="search-flow-title"></span></h2>
+          <ol id="search-flow-steps" class="steps"></ol>
+          <div id="search-flow-result"></div>
+        </div>
+      </section>
+
       <!-- ---------- Tab: Meine Assets ---------- -->
       <section id="tab-assets" class="tab-panel hidden">
         <div class="grid-2">
@@ -79,8 +102,12 @@
               <input type="file" id="up-file" required>
               <label>Bauteil-Name *</label>
               <input type="text" id="up-partName" placeholder="z.B. Halterung V2" required>
-              <label>Material</label>
-              <input type="text" id="up-material" placeholder="z.B. AlSi10Mg">
+              <label>Materialkurztext</label>
+              <input type="text" id="up-material" placeholder="z.B. Edelstahl-Halterung">
+              <label>Werkstoff</label>
+              <input type="text" id="up-werkstoff" placeholder="z.B. 1.4404 / AlSi10Mg">
+              <label>Abmaße (L×B×H)</label>
+              <input type="text" id="up-abmasse" placeholder="z.B. 20x20x5 mm">
               <label>Verfahren</label>
               <input type="text" id="up-process" placeholder="z.B. LPBF / SLM">
               <label>Beschreibung</label>

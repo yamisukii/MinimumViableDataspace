@@ -1,0 +1,17 @@
+{
+  "$comment": "Canonical AM2Scale dataspace KG model (rough, from the data-structure sketch). Every company abstracts its ERP/CAD/production data into this shape. Each attribute has a sensitivity tier; the vector search matches over the T1 (searchable) attributes, and results are returned attribute-by-attribute filtered to the requester's effective tier (min(relationship, person) from Phase 5).",
+  "entity": "Bauteil",
+  "searchableAttributes": ["materialkurztext", "werkstoff", "abmasse", "partName"],
+  "attributes": {
+    "partName":        { "tier": 1, "label": "Bauteil",         "source": "Stammdaten" },
+    "materialkurztext":{ "tier": 1, "label": "Materialkurztext", "source": "Stammdaten", "searchable": true },
+    "werkstoff":       { "tier": 1, "label": "Werkstoff",        "source": "Stammdaten", "searchable": true },
+    "abmasse":         { "tier": 1, "label": "Abmaße (L×B×H)",   "source": "Stammdaten", "searchable": true },
+    "verfahren":       { "tier": 2, "label": "Verfahren/Prozess","source": "CAD/Produktion" },
+    "bestand":         { "tier": 2, "label": "Bestand",          "source": "ERP" },
+    "verbrauch":       { "tier": 2, "label": "Verbrauch",        "source": "ERP" },
+    "co2":             { "tier": 2, "label": "kWh/CO₂",          "source": "Infrastruktur" },
+    "cad":             { "tier": 3, "label": "CAD / techn. Zeichnung", "source": "CAD" },
+    "qdata":           { "tier": 3, "label": "Q-Data je Charge", "source": "Fertigung" }
+  }
+}

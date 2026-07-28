@@ -113,6 +113,8 @@ legt der Admin im Tab „Verwaltung" an. Danach:
 - **Dataspace-Tab**: alle anderen Teilnehmer (aus der Registry), deren Kataloge
   durchsuchen, Datenbezug per Klick mit Schritt-Anzeige
   (Negotiation → Agreement → Transfer → EDR → Download)
+- **Suche**: semantische Vektorsuche über die freigegebenen Stammdaten aller
+  Teilnehmer (siehe „Vektorsuche" unten)
 - **Meine Assets**: Datei hochladen (STL/STEP/3MF/...) mit 3D-Druck-Metadaten
   (Bauteil, Material, Verfahren) → wird automatisch EDC-Asset + Contract
   Definition und ist sofort im Katalog der anderen sichtbar
@@ -137,6 +139,28 @@ Assets tragen ein **Tier** (T1 Stammdaten · T2 Prozess/Bestand · T3 CAD/Q-Data
 wählbar beim Upload. Sichtbar/​beziehbar ist ein Asset, wenn
 `Tier ≤ min(Beziehungslevel, Person-Level)`. Durchgesetzt an Discovery + Portal;
 EDC behält seinen kryptografischen Gate (Membership + DID-Restriktion).
+
+### Vektorsuche (Discovery über den KG)
+
+Ein zentraler **Discovery-Service** (Host-Prozess, `.\start-discovery.ps1`,
+Port 5185) indexiert die freigegebene **KG-Projektion** jedes Unternehmens und
+bietet semantische Suche mit **lokalen Offline-Embeddings** (model2vec
+`potion-base-8M`, kein Torch/Internet nach dem einmaligen Modell-Download).
+Einmalig: `python -m pip install model2vec numpy`.
+
+- Gematcht wird über die **T1-Stammdaten** (Materialkurztext, Werkstoff, Abmaße).
+- Jeder Treffer wird **attributweise level-gefiltert**: der Betrachter sieht nur
+  KG-Attribute bis zu seinem effektiven Tier `min(Beziehung, Person)`; höhere
+  Attribute werden als „verborgen" markiert.
+- „Beziehen" prüft das Level erneut (`/api/offer`) und startet dann den
+  EDC-Flow. Ein Asset über dem eigenen Level ist auffindbar, aber nicht beziehbar.
+
+Kanonisches KG-Schema: [ui/discovery/kg-schema.json](../ui/discovery/kg-schema.json).
+Jedes Unternehmen abstrahiert seine Daten in dieses Schema; der Portal-Upload
+erfasst die T1-Felder, „Reindex" veröffentlicht den Bestand einer Firma.
+
+> Hinweis: Der Discovery-Service läuft derzeit als Host-Prozess (wie die Portale).
+> Für Portainer wird er analog containerisiert (Modell ins Image gebacken).
 
 Dateiablage pro Firma (persistent, im Explorer sichtbar):
 `compose/companies/<name>/storage/assets` (Angebote, serviert vom
