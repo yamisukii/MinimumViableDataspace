@@ -223,3 +223,18 @@ button.ghost-dark { background: #e8eef2; color: var(--text); }
   padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+.header-right { display: flex; align-items: center; gap: 12px; }
+.userbadge { color: #cfe2ea; font-size: 13px; }
+
+.tier { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.tier-1 { background: #e2f4e8; color: #1c6b34; }
+.tier-2 { background: #fdf3d7; color: #8a6410; }
+.tier-3 { background: #fbe3e3; color: #a12727; }
+
+.inline-form { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.inline-form input[type="text"] { flex: 1; min-width: 160px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+.inline-form select, #relationships select, #up-tier, #rep-verdict {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; background: #fff;
+}
+#relationships select { min-width: 120px; }

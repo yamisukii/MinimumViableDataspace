@@ -23,6 +23,12 @@ function fmtSize(n) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const TIER_LABEL = { 1: "T1 Stammdaten", 2: "T2 Prozess", 3: "T3 CAD" };
+function tierBadge(t) {
+  t = t || 1;
+  return `<span class="tier tier-${t}">${TIER_LABEL[t] || ("T" + t)}</span>`;
+}
+
 // ------------------------------------------------------------- login/app
 let me = null;
 let currentPartner = null;
@@ -37,6 +43,9 @@ async function showApp() {
   $("app-view").classList.remove("hidden");
   $("me-name").textContent = me.displayName || me.name;
   $("me-did").textContent = me.did || "";
+  const role = me.level === "leiter" ? "Leiter/Admin" : "Arbeiter";
+  $("me-user").textContent = `${me.username} · ${role}`;
+  $("tab-btn-admin").classList.toggle("hidden", !me.isAdmin);
   await Promise.all([loadPartners(), loadAssets(), loadFiles()]);
 }
 
@@ -58,7 +67,7 @@ $("login-form").addEventListener("submit", async (ev) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        company: $("login-company").value,
+        username: $("login-user").value,
         password: $("login-password").value,
       }),
     });
@@ -87,6 +96,7 @@ document.querySelectorAll(".tab").forEach((btn) => {
     if (btn.dataset.tab === "assets") loadAssets();
     if (btn.dataset.tab === "files") loadFiles();
     if (btn.dataset.tab === "reports") loadInbox();
+    if (btn.dataset.tab === "admin") loadAdmin();
   });
 });
 
@@ -116,8 +126,10 @@ async function loadCatalog(partner) {
   $("catalog").innerHTML = "";
   try {
     const data = await api(`/api/catalog?partner=${encodeURIComponent(partner.name)}`);
-    $("catalog-hint").textContent = data.datasets.length
-      ? "" : "Keine Angebote (oder keine Berechtigung).";
+    const rel = data.relationship ? ` · ${partner.displayName} stuft uns als <strong>${esc(data.relationship)}</strong> ein (Zugang bis T${data.effectiveTier})` : "";
+    $("catalog-hint").innerHTML = data.datasets.length
+      ? `<span class="muted small">${data.datasets.length} sichtbare Angebote${rel}</span>`
+      : `<span class="muted small">Keine sichtbaren Angebote${rel}</span>`;
     data.datasets.forEach((ds) => {
       const props = ds.properties || {};
       const metaRows = ["am2scale:partName", "am2scale:material", "am2scale:process", "am2scale:fileFormat"]
@@ -129,7 +141,7 @@ async function loadCatalog(partner) {
       div.innerHTML = `
         <div class="dataset-head">
           <strong>${esc(props.name || props["edc:name"] || ds.id)}</strong>
-          <button>Beziehen</button>
+          <span>${tierBadge(ds.tier)} <button>Beziehen</button></span>
         </div>
         <div class="muted small">${esc(ds.description || "")}</div>
         <div class="muted small">Asset-ID: <code>${esc(ds.id)}</code></div>
@@ -237,8 +249,9 @@ async function loadAssets() {
       const p = a.properties || {};
       const div = document.createElement("div");
       div.className = "dataset";
+      const t = parseInt(p["am2scale:tier"] || "1", 10);
       div.innerHTML = `
-        <strong>${esc(p.name || p["edc:name"] || a.id)}</strong>
+        <div class="dataset-head"><strong>${esc(p.name || p["edc:name"] || a.id)}</strong>${tierBadge(t)}</div>
         <div class="muted small">Asset-ID: <code>${esc(a.id)}</code></div>
         ${p["am2scale:material"] ? `<div class="muted small">Material: ${esc(p["am2scale:material"])} · Verfahren: ${esc(p["am2scale:process"] || "-")}</div>` : ""}
         ${p.description ? `<div class="muted small">${esc(p.description)}</div>` : ""}`;
@@ -262,6 +275,7 @@ $("upload-form").addEventListener("submit", async (ev) => {
     fd.append("material", $("up-material").value);
     fd.append("process", $("up-process").value);
     fd.append("description", $("up-description").value);
+    fd.append("tier", $("up-tier").value);
     const resp = await fetch("/api/assets", { method: "POST", body: fd });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || resp.statusText);
@@ -389,6 +403,80 @@ async function loadInbox() {
     el.innerHTML = `<p class="error">${esc(e.message)}</p>`;
   }
 }
+
+// ------------------------------------------------------------- admin
+const REL_OPTS = [
+  { level: 1, label: "fremd" },
+  { level: 2, label: "partner" },
+  { level: 3, label: "tochter" },
+];
+
+async function loadAdmin() {
+  // Personen
+  try {
+    const data = await api("/api/admin/persons");
+    const el = $("persons");
+    el.innerHTML = "";
+    data.persons.forEach((p) => {
+      const div = document.createElement("div");
+      div.className = "file-row";
+      const role = p.level === "leiter" ? "Leiter/Admin" : "Arbeiter";
+      div.innerHTML = `
+        <div class="file-main"><strong>${esc(p.username)}</strong>
+          <span class="muted small">${role}${p.isDefault ? " · Standard-Firmenkonto" : ""}</span></div>
+        ${p.isDefault ? "" : `<button class="mini danger" data-del="${esc(p.username)}">entfernen</button>`}`;
+      const b = div.querySelector("button[data-del]");
+      if (b) b.addEventListener("click", async () => {
+        if (!confirm(`Benutzer '${p.username}' entfernen?`)) return;
+        await api(`/api/admin/persons/${encodeURIComponent(p.username)}`, { method: "DELETE" });
+        loadAdmin();
+      });
+      el.appendChild(div);
+    });
+  } catch (e) { $("persons").innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+
+  // Beziehungen
+  try {
+    const data = await api("/api/admin/relationships");
+    const el = $("relationships");
+    el.innerHTML = "";
+    data.relationships.forEach((r) => {
+      const div = document.createElement("div");
+      div.className = "file-row";
+      const sel = REL_OPTS.map((o) =>
+        `<option value="${o.level}" ${o.level === r.level ? "selected" : ""}>${o.label}</option>`).join("");
+      div.innerHTML = `
+        <div class="file-main"><strong>${esc(r.company)}</strong></div>
+        <select data-company="${esc(r.company)}">${sel}</select>`;
+      div.querySelector("select").addEventListener("change", async (ev) => {
+        await api("/api/admin/relationships", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ company: r.company, level: parseInt(ev.target.value, 10) }),
+        });
+      });
+      el.appendChild(div);
+    });
+  } catch (e) { $("relationships").innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+}
+
+$("person-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const msg = $("person-msg");
+  msg.className = "hidden";
+  try {
+    const data = await api("/api/admin/persons", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: $("person-name").value.trim().toLowerCase(), level: $("person-level").value }),
+    });
+    msg.className = "success";
+    msg.textContent = `Person '${data.username}' (${data.level}) angelegt – Passwort: password`;
+    $("person-form").reset();
+    loadAdmin();
+  } catch (e) {
+    msg.className = "error";
+    msg.textContent = e.message;
+  }
+});
 
 init();
 // refresh the inbox badge shortly after login

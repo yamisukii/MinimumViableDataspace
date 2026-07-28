@@ -40,9 +40,17 @@ PORTAL_CLIENT_ID = "dataspace-portal"
 DEFAULT_USER_PASSWORD = "password"
 MAX_UPLOAD = 200 * 1024 * 1024
 
-# sid -> {"company": str, "created": float}
+# sid -> {"company": str, "username": str, "level": str, "created": float}
 sessions = {}
 _portal_client_ensured = False
+
+# person levels (position in company); "leiter" is also the company admin.
+PERSON_LEVELS = ("leiter", "arbeiter")
+PERSON_MAX_TIER = {"leiter": 3, "arbeiter": 2}   # arbeiter sees everything except T3 (CAD/drawings)
+
+# company relationship levels (owner -> other company), owner-assigned.
+REL_FREMD, REL_PARTNER, REL_TOCHTER = 1, 2, 3
+REL_LABELS = {1: "fremd", 2: "partner", 3: "tochter"}
 
 
 class ApiError(Exception):
@@ -114,6 +122,7 @@ def ensure_portal_client():
     global _portal_client_ensured
     if _portal_client_ensured:
         return
+    token = kc_admin_token()
     kc_admin("POST", "/clients", {
         "clientId": PORTAL_CLIENT_ID,
         "name": "Dataspace Portal",
@@ -122,44 +131,90 @@ def ensure_portal_client():
         "publicClient": True,
         "directAccessGrantsEnabled": True,
         "standardFlowEnabled": False,
-    })
+    }, token=token)
+    # allow custom user attributes (company, personLevel); recent Keycloak drops
+    # "unmanaged" attributes by default, which would silently lose our levels.
+    try:
+        profile = kc_admin("GET", "/users/profile", token=token) or {}
+        if profile.get("unmanagedAttributePolicy") != "ENABLED":
+            profile["unmanagedAttributePolicy"] = "ENABLED"
+            kc_admin("PUT", "/users/profile", profile, token=token)
+    except ApiError:
+        pass
     _portal_client_ensured = True
 
 
-def ensure_user(company, token=None):
-    # full profile + no required actions, otherwise Keycloak rejects the
-    # password grant with "Account is not fully set up"
+def kc_find_user(username, token=None):
+    users = kc_admin("GET", f"/users?username={urllib.parse.quote(username)}&exact=true", token=token) or []
+    return next((u for u in users if u.get("username") == username), None)
+
+
+def ensure_user(username, company, level="leiter", password=DEFAULT_USER_PASSWORD, token=None):
+    """Create (or repair) a Keycloak user with company + personLevel attributes.
+    Full profile + no required actions, else Keycloak rejects the password grant."""
     token = token or kc_admin_token()
     profile = {
-        "username": company,
+        "username": username,
         "enabled": True,
-        "email": f"{company}@dataspace.local",
+        "email": f"{username}@dataspace.local",
         "emailVerified": True,
-        "firstName": company,
+        "firstName": username,
         "lastName": "Dataspace",
         "requiredActions": [],
+        "attributes": {"company": [company], "personLevel": [level]},
     }
     kc_admin("POST", "/users", {
         **profile,
-        "credentials": [{"type": "password", "value": DEFAULT_USER_PASSWORD, "temporary": False}],
+        "credentials": [{"type": "password", "value": password, "temporary": False}],
     }, token=token)
-    # repair pre-existing/incomplete users (e.g. created without email)
-    users = kc_admin("GET", f"/users?username={urllib.parse.quote(company)}&exact=true", token=token) or []
-    for u in users:
-        if u.get("username") != company:
-            continue
-        if not u.get("email") or u.get("requiredActions"):
-            kc_admin("PUT", f"/users/{u['id']}", profile, token=token)
-            kc_admin("PUT", f"/users/{u['id']}/reset-password",
-                     {"type": "password", "value": DEFAULT_USER_PASSWORD, "temporary": False},
-                     token=token)
+    u = kc_find_user(username, token=token)
+    if u and (not u.get("email") or u.get("requiredActions")
+              or (u.get("attributes") or {}).get("company", [None])[0] != company):
+        kc_admin("PUT", f"/users/{u['id']}", profile, token=token)
+        kc_admin("PUT", f"/users/{u['id']}/reset-password",
+                 {"type": "password", "value": password, "temporary": False}, token=token)
+    return kc_find_user(username, token=token)
 
 
-def kc_login(company, password):
+def user_company_level(username, token=None):
+    """Returns (company, level) from the user's attributes; defaults for the
+    company-named default account (username == company -> leiter/admin)."""
+    u = kc_find_user(username, token=token)
+    attrs = (u or {}).get("attributes") or {}
+    company = (attrs.get("company") or [None])[0]
+    level = (attrs.get("personLevel") or [None])[0]
+    if not company and registry_entry(username):
+        company, level = username, "leiter"   # default company account
+    return company, (level or "arbeiter")
+
+
+def kc_login(username, password):
     return kc_form(f"/realms/{KC_REALM}/protocol/openid-connect/token", {
         "grant_type": "password", "client_id": PORTAL_CLIENT_ID,
-        "username": company, "password": password,
+        "username": username, "password": password,
     })
+
+
+def list_persons(company):
+    """All Keycloak users belonging to `company` (incl. the default account)."""
+    token = kc_admin_token()
+    persons, seen = [], set()
+    # default company account
+    if kc_find_user(company, token=token):
+        persons.append({"username": company, "level": "leiter", "isDefault": True})
+        seen.add(company)
+    # users with attribute company == <company>
+    users = kc_admin("GET", f"/users?q=company:{urllib.parse.quote(company)}&max=200", token=token) or []
+    for u in users:
+        name = u.get("username")
+        attrs = u.get("attributes") or {}
+        if name in seen or (attrs.get("company") or [None])[0] != company:
+            continue
+        persons.append({"username": name,
+                        "level": (attrs.get("personLevel") or ["arbeiter"])[0],
+                        "isDefault": False})
+        seen.add(name)
+    return persons
 
 
 # ---------------------------------------------------------------- registry
@@ -197,6 +252,50 @@ def storage_dir(company, kind):
     d = COMPANIES_DIR / company / "storage" / kind
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+# ------------------------------------------------------ levels & relationships
+
+def relationships_file(owner):
+    return COMPANIES_DIR / owner / "relationships.json"
+
+
+def get_relationships(owner):
+    """Owner's classification of other companies: {company: 1|2|3}."""
+    f = relationships_file(owner)
+    if f.exists():
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def set_relationship(owner, other, level):
+    rels = get_relationships(owner)
+    rels[other] = int(level)
+    relationships_file(owner).write_text(json.dumps(rels, indent=2), encoding="utf-8")
+
+
+def relationship_level(owner, requester):
+    """How `owner` classifies `requester` (default: fremd)."""
+    if owner == requester:
+        return REL_TOCHTER  # own company = full
+    return int(get_relationships(owner).get(requester, REL_FREMD))
+
+
+def asset_tier(properties):
+    try:
+        return int((properties or {}).get("am2scale:tier", 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def effective_tier(viewer_company, viewer_level, owner_company):
+    """Highest data tier `viewer_company`/person may access from `owner_company`."""
+    company_cap = relationship_level(owner_company, viewer_company)
+    person_cap = PERSON_MAX_TIER.get(viewer_level, 2)
+    return min(company_cap, person_cap)
 
 
 # ----------------------------------------------------------------- catalog
@@ -275,12 +374,17 @@ def parse_multipart(content_type, body):
 def create_asset(company, filename, fields):
     slug = SAFE_NAME_RE.sub("-", (fields.get("partName") or Path(filename).stem).lower()).strip("-")[:40]
     asset_id = f"{slug}-{secrets.token_hex(2)}"
+    try:
+        tier = int(fields.get("tier") or 1)
+    except ValueError:
+        tier = 1
     properties = {
         "name": fields.get("partName") or filename,
         "description": fields.get("description", ""),
         "am2scale:partName": fields.get("partName", ""),
         "am2scale:material": fields.get("material", ""),
         "am2scale:process": fields.get("process", ""),
+        "am2scale:tier": str(tier),
         "am2scale:fileName": filename,
         "am2scale:fileFormat": Path(filename).suffix.lstrip(".").upper(),
         "am2scale:uploadedAt": datetime.now().isoformat(timespec="seconds"),
@@ -509,6 +613,22 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return sess["company"]
 
+    def require_full_session(self):
+        _, sess = get_session(self)
+        if not sess:
+            self.send_json(401, {"error": "nicht eingeloggt"})
+            return None
+        return sess
+
+    def require_admin(self):
+        sess = self.require_full_session()
+        if not sess:
+            return None
+        if sess.get("level") != "leiter":
+            self.send_json(403, {"error": "nur Firmen-Admin (Leiter) erlaubt"})
+            return None
+        return sess
+
     # -- routes ------------------------------------------------------------
     def do_GET(self):
         try:
@@ -520,33 +640,56 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/styles.css":
                 self.send_file(ROOT / "styles.css", "text/css; charset=utf-8")
             elif path == "/api/me":
-                _, sess = get_session(self)
+                sess = self.require_full_session()
                 if not sess:
-                    self.send_json(401, {"error": "nicht eingeloggt"})
                     return
-                entry = registry_entry(sess["company"]) or {"name": sess["company"]}
+                entry = dict(registry_entry(sess["company"]) or {"name": sess["company"]})
+                entry["username"] = sess.get("username")
+                entry["level"] = sess.get("level")
+                entry["isAdmin"] = sess.get("level") == "leiter"
                 self.send_json(200, entry)
             elif path == "/api/partners":
                 me = self.require_session()
                 if me:
                     self.send_json(200, {"partners": [c for c in registry() if c["name"] != me]})
             elif path == "/api/catalog":
-                me = self.require_session()
-                if not me:
+                sess = self.require_full_session()
+                if not sess:
                     return
+                me = sess["company"]
                 qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
                 partner = registry_entry((qs.get("partner") or [""])[0])
                 if not partner:
                     self.send_json(404, {"error": "unbekannter Partner"})
                     return
-                # quality reports are shown in the dedicated inbox, not the normal catalog
-                datasets = [d for d in request_catalog(me, partner)
-                            if (d.get("properties") or {}).get("am2scale:reportType") != "quality"]
-                self.send_json(200, {"datasets": datasets})
+                # visible = not a quality report AND tier within the viewer's effective access
+                cap = effective_tier(me, sess.get("level"), partner["name"])
+                datasets = []
+                for d in request_catalog(me, partner):
+                    props = d.get("properties") or {}
+                    if props.get("am2scale:reportType") == "quality":
+                        continue
+                    d["tier"] = asset_tier(props)
+                    if d["tier"] <= cap:
+                        datasets.append(d)
+                self.send_json(200, {"datasets": datasets, "effectiveTier": cap,
+                                     "relationship": REL_LABELS.get(relationship_level(partner["name"], me))})
             elif path == "/api/reports/inbox":
                 me = self.require_session()
                 if me:
                     self.send_json(200, {"reports": report_inbox(me)})
+            elif path == "/api/admin/persons":
+                sess = self.require_admin()
+                if sess:
+                    self.send_json(200, {"persons": list_persons(sess["company"])})
+            elif path == "/api/admin/relationships":
+                sess = self.require_admin()
+                if sess:
+                    others = [c["name"] for c in registry() if c["name"] != sess["company"]]
+                    rels = get_relationships(sess["company"])
+                    self.send_json(200, {"relationships": [
+                        {"company": o, "level": int(rels.get(o, REL_FREMD)),
+                         "label": REL_LABELS[int(rels.get(o, REL_FREMD))]} for o in others]})
             elif m := re.match(r"^/api/negotiations/([\w-]+)$", path):
                 me = self.require_session()
                 if me:
@@ -613,25 +756,30 @@ class Handler(BaseHTTPRequestHandler):
             path = urllib.parse.urlparse(self.path).path
             if path == "/api/login":
                 body = self.read_json()
-                company = (body.get("company") or "").strip().lower()
+                username = (body.get("username") or body.get("company") or "").strip().lower()
                 password = body.get("password") or ""
-                if not registry_entry(company):
-                    self.send_json(401, {"error": f"Unternehmen '{company}' ist nicht im Dataspace registriert."})
-                    return
                 ensure_portal_client()
                 try:
-                    kc_login(company, password)
+                    kc_login(username, password)
                 except ApiError:
-                    # first login: auto-provision the user, then retry once
-                    ensure_user(company)
-                    try:
-                        kc_login(company, password)
-                    except ApiError:
-                        self.send_json(401, {"error": "Login fehlgeschlagen (falsches Passwort?)"})
+                    # first login of a default company account: auto-provision, retry once
+                    if registry_entry(username):
+                        ensure_user(username, username, "leiter")
+                        try:
+                            kc_login(username, password)
+                        except ApiError:
+                            self.send_json(401, {"error": "Login fehlgeschlagen (falsches Passwort?)"})
+                            return
+                    else:
+                        self.send_json(401, {"error": "Login fehlgeschlagen (Benutzer/Passwort?)"})
                         return
+                company, level = user_company_level(username)
+                if not company or not registry_entry(company):
+                    self.send_json(403, {"error": f"Benutzer '{username}' ist keinem registrierten Unternehmen zugeordnet."})
+                    return
                 sid = secrets.token_hex(16)
-                sessions[sid] = {"company": company, "created": time.time()}
-                self.send_json(200, {"company": company},
+                sessions[sid] = {"company": company, "username": username, "level": level, "created": time.time()}
+                self.send_json(200, {"company": company, "username": username, "level": level},
                                {"Set-Cookie": f"portal_sid={sid}; Path=/; HttpOnly; SameSite=Lax"})
             elif path == "/api/logout":
                 sid, _ = get_session(self)
@@ -750,8 +898,66 @@ class Handler(BaseHTTPRequestHandler):
                 asset_id, target = create_report_asset(me, filename, fields)
                 self.send_json(201, {"assetId": asset_id, "target": target,
                                      "fileName": filename, "size": len(payload)})
+            elif path == "/api/admin/persons":
+                sess = self.require_admin()
+                if not sess:
+                    return
+                b = self.read_json()
+                uname = (b.get("username") or "").strip().lower()
+                level = b.get("level") if b.get("level") in PERSON_LEVELS else "arbeiter"
+                pw = b.get("password") or DEFAULT_USER_PASSWORD
+                if not re.match(r"^[a-z][a-z0-9._-]{1,40}$", uname):
+                    self.send_json(400, {"error": "Ungültiger Benutzername (klein, a-z0-9._-)."})
+                    return
+                if kc_find_user(uname):
+                    self.send_json(409, {"error": f"Benutzer '{uname}' existiert bereits."})
+                    return
+                ensure_user(uname, sess["company"], level, password=pw)
+                self.send_json(201, {"username": uname, "level": level, "company": sess["company"]})
+            elif path == "/api/admin/relationships":
+                sess = self.require_admin()
+                if not sess:
+                    return
+                b = self.read_json()
+                other = (b.get("company") or "").strip().lower()
+                level = int(b.get("level") or REL_FREMD)
+                if not registry_entry(other) or other == sess["company"]:
+                    self.send_json(400, {"error": "unbekanntes Zielunternehmen"})
+                    return
+                if level not in (REL_FREMD, REL_PARTNER, REL_TOCHTER):
+                    self.send_json(400, {"error": "ungültiges Level"})
+                    return
+                set_relationship(sess["company"], other, level)
+                self.send_json(200, {"company": other, "level": level, "label": REL_LABELS[level]})
             else:
                 self.send_json(404, {"error": "not found"})
+        except ApiError as e:
+            self.send_json(502, {"error": f"Upstream-Fehler (HTTP {e.status})", "detail": e.body[:500]})
+        except Exception as e:  # noqa: BLE001
+            self.send_json(500, {"error": str(e)})
+
+    def do_DELETE(self):
+        try:
+            path = urllib.parse.urlparse(self.path).path
+            m = re.match(r"^/api/admin/persons/([a-z0-9._-]+)$", path)
+            if not m:
+                self.send_json(404, {"error": "not found"})
+                return
+            sess = self.require_admin()
+            if not sess:
+                return
+            uname = m.group(1)
+            if uname == sess["company"]:
+                self.send_json(400, {"error": "Standard-Firmenkonto kann nicht gelöscht werden."})
+                return
+            company, _ = user_company_level(uname)
+            if company != sess["company"]:
+                self.send_json(403, {"error": "Benutzer gehört nicht zu Ihrem Unternehmen."})
+                return
+            u = kc_find_user(uname)
+            if u:
+                kc_admin("DELETE", f"/users/{u['id']}")
+            self.send_json(200, {"deleted": uname})
         except ApiError as e:
             self.send_json(502, {"error": f"Upstream-Fehler (HTTP {e.status})", "detail": e.body[:500]})
         except Exception as e:  # noqa: BLE001

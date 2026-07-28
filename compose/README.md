@@ -106,10 +106,9 @@ danach `podman restart traefik`.
 .\..\start-portal.ps1        # http://127.0.0.1:5180  (vom Repo-Root: .\start-portal.ps1)
 ```
 
-Jedes Unternehmen loggt sich mit seinem **Keycloak-Account** ein
-(Realm `mvd`, Username = Firmenname, Standard-Passwort `password`;
-User und Portal-Client werden beim ersten Login automatisch angelegt/repariert).
-Danach:
+Login mit **Keycloak-Account** (Realm `mvd`, Standard-Passwort `password`).
+Der Firmenname als Benutzer ist automatisch **Leiter/Admin**; weitere Personen
+legt der Admin im Tab „Verwaltung" an. Danach:
 
 - **Dataspace-Tab**: alle anderen Teilnehmer (aus der Registry), deren Kataloge
   durchsuchen, Datenbezug per Klick mit Schritt-Anzeige
@@ -121,6 +120,23 @@ Danach:
   Qualitätsberichte (DID-beschränkt), per Klick beziehbar
 - **Meine Dateien**: empfangene und hochgeladene Dateien; zu empfangenen
   Bauteilen kann ein Qualitätsbericht an den Anbieter zurückgesendet werden
+- **Verwaltung** (nur Leiter/Admin): Personen anlegen (Leiter/Arbeiter) und
+  andere Unternehmen als fremd/Partner/Tochter einstufen
+
+### Rollen & Level (Zugriffssteuerung)
+
+Zwei Dimensionen bestimmen, welche Daten jemand sieht/beziehen kann:
+
+- **Company-Beziehungslevel** (der Dateneigentümer stuft andere Firmen ein):
+  **fremd** (T1) · **Partner** (T1+T2) · **Tochter** (T1+T2+T3). Einstellbar im
+  Tab „Verwaltung".
+- **Person-Level**: **Leiter** (voller Zugang) · **Arbeiter** (alles außer T3 =
+  CAD/technische Zeichnungen). Keycloak-Attribut, vom Admin gesetzt.
+
+Assets tragen ein **Tier** (T1 Stammdaten · T2 Prozess/Bestand · T3 CAD/Q-Data),
+wählbar beim Upload. Sichtbar/​beziehbar ist ein Asset, wenn
+`Tier ≤ min(Beziehungslevel, Person-Level)`. Durchgesetzt an Discovery + Portal;
+EDC behält seinen kryptografischen Gate (Membership + DID-Restriktion).
 
 Dateiablage pro Firma (persistent, im Explorer sichtbar):
 `compose/companies/<name>/storage/assets` (Angebote, serviert vom

@@ -14,15 +14,16 @@
       <h1>Dataspace Portal</h1>
       <p class="muted">Melden Sie sich als Ihr Unternehmen an</p>
       <form id="login-form">
-        <label for="login-company">Unternehmen</label>
-        <input id="login-company" type="text" placeholder="z.B. huber-ag" autocomplete="username" required>
+        <label for="login-user">Benutzer</label>
+        <input id="login-user" type="text" placeholder="z.B. huber-ag oder huber-worker1" autocomplete="username" required>
         <label for="login-password">Passwort</label>
         <input id="login-password" type="password" value="password" autocomplete="current-password" required>
         <button type="submit" id="login-btn">Anmelden</button>
         <div id="login-error" class="error hidden"></div>
       </form>
-      <p class="muted small">Authentifizierung über Keycloak (Realm „mvd&ldquo;).<br>
-        Standard-Passwort neuer Unternehmen: <code>password</code></p>
+      <p class="muted small">Firmen-Login = Firmenname (ist automatisch <strong>Leiter/Admin</strong>).
+        Weitere Personen legt der Admin im Tab „Verwaltung" an.<br>
+        Standard-Passwort: <code>password</code></p>
     </div>
   </div>
 
@@ -33,7 +34,10 @@
         <h1 id="me-name">…</h1>
         <div id="me-did" class="did"></div>
       </div>
-      <button id="logout-btn" class="ghost">Abmelden</button>
+      <div class="header-right">
+        <span id="me-user" class="userbadge"></span>
+        <button id="logout-btn" class="ghost">Abmelden</button>
+      </div>
     </header>
 
     <nav class="tabs">
@@ -41,6 +45,7 @@
       <button class="tab" data-tab="assets">Meine Assets</button>
       <button class="tab" data-tab="reports">Eingehende Berichte <span id="inbox-count" class="pill"></span></button>
       <button class="tab" data-tab="files">Meine Dateien</button>
+      <button class="tab hidden" id="tab-btn-admin" data-tab="admin">Verwaltung</button>
     </nav>
 
     <main>
@@ -80,6 +85,12 @@
               <input type="text" id="up-process" placeholder="z.B. LPBF / SLM">
               <label>Beschreibung</label>
               <input type="text" id="up-description" placeholder="Kurzbeschreibung">
+              <label>Vertraulichkeit (Tier)</label>
+              <select id="up-tier">
+                <option value="1">T1 – Stammdaten (auch für Fremde sichtbar)</option>
+                <option value="2">T2 – Prozess/Bestand (Partner)</option>
+                <option value="3">T3 – CAD / techn. Zeichnung (nur Tochter)</option>
+              </select>
               <button type="submit" id="upload-btn">Hochladen &amp; im Katalog anbieten</button>
               <div id="upload-msg" class="hidden"></div>
             </form>
@@ -118,6 +129,31 @@
           <div class="panel">
             <h2>Hochgeladene Dateien</h2>
             <div id="my-uploads"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- Tab: Verwaltung (nur Admin/Leiter) ---------- -->
+      <section id="tab-admin" class="tab-panel hidden">
+        <div class="grid-2">
+          <div class="panel">
+            <h2>Personen im Unternehmen</h2>
+            <p class="muted small">Leiter dürfen alles; Arbeiter alles außer T3 (techn. Zeichnungen/CAD).</p>
+            <div id="persons"></div>
+            <form id="person-form" class="inline-form">
+              <input type="text" id="person-name" placeholder="benutzername (z.B. huber-worker1)" required>
+              <select id="person-level">
+                <option value="arbeiter">Arbeiter</option>
+                <option value="leiter">Leiter</option>
+              </select>
+              <button type="submit">Anlegen</button>
+            </form>
+            <div id="person-msg" class="hidden"></div>
+          </div>
+          <div class="panel">
+            <h2>Andere Unternehmen einstufen</h2>
+            <p class="muted small">Bestimmt, welche Datentiefe die andere Firma bei <em>uns</em> sehen/beziehen darf.</p>
+            <div id="relationships"></div>
           </div>
         </div>
       </section>
