@@ -501,22 +501,29 @@ $("search-form").addEventListener("submit", async (ev) => {
         .join("");
       const withheld = (h.withheld || []).length
         ? `<div class="muted small">🔒 durch Level verborgen: ${h.withheld.map(esc).join(", ")}</div>` : "";
-      const btn = h.retrievable
-        ? `<button class="mini">Beziehen</button>`
-        : `<span class="muted small">kein Bezug (Level)</span>`;
+      const isKg = h.kind === "kg";
+      const btn = isKg
+        ? `<button class="mini">Im KG anzeigen</button>`
+        : (h.retrievable
+            ? `<button class="mini">Beziehen</button>`
+            : `<span class="muted small">kein Bezug (Level)</span>`);
+      const title = (h.attributes.benennung || h.attributes.materialkurztext ||
+                     h.attributes.name || h.attributes.modell ||
+                     h.attributes.partName || {}).value || h.assetId;
       const div = document.createElement("div");
       div.className = "dataset";
       div.innerHTML = `
         <div class="dataset-head">
-          <strong>${esc((h.attributes.partName && h.attributes.partName.value) || h.assetId)}</strong>
-          <span>${tierBadge(h.fileTier)} <span class="score">score ${h.score}</span> ${btn}</span>
+          <strong>${esc(title)}</strong>
+          <span>${isKg ? `<span class="tier kg-badge">KG · ${esc(h.nodeType)}</span>` : tierBadge(h.fileTier)}
+            <span class="score">score ${h.score}</span> ${btn}</span>
         </div>
         <div class="muted small">Anbieter: <strong>${esc(h.ownerDisplay)}</strong>${h.own ? " (eigenes)" : ""}
-          · Asset: <code>${esc(h.assetId)}</code></div>
+          · ${isKg ? "Knoten" : "Asset"}: <code>${esc(h.assetId)}</code></div>
         ${attrRows ? `<table class="kv small">${attrRows}</table>` : ""}
         ${withheld}`;
       const b = div.querySelector("button");
-      if (b) b.addEventListener("click", () => consumeHit(h));
+      if (b) b.addEventListener("click", () => isKg ? showKg(h) : consumeHit(h));
       el.appendChild(div);
     });
   } catch (e) {
@@ -536,6 +543,70 @@ $("reindex-btn").addEventListener("click", async () => {
     msg.textContent = e.message;
   }
 });
+
+// -------------------------------------------------------- knowledge graph
+const NODE_ICON = {
+  Unternehmen: "🏢", Bauteil: "⚙️", Drucker: "🖨️",
+  Produktionsauftrag: "📋", Fertigungsdaten: "📈", DPP: "📄",
+};
+
+async function showKg(hit) {
+  const panel = $("kg-panel");
+  panel.style.display = "";
+  $("kg-title").textContent = hit.ownerDisplay;
+  $("kg-sub").textContent = "Lade Graph…";
+  $("kg-view").innerHTML = "";
+  panel.scrollIntoView({ behavior: "smooth" });
+  try {
+    const g = await api("/api/kg", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ owner: hit.owner, focus: hit.nodeId, depth: 2 }),
+    });
+    const ds = g.datasetCompany ? ` · Datenquelle: ${g.datasetCompany.name} (${g.datasetCompany.uId})` : "";
+    $("kg-sub").innerHTML =
+      `${g.nodes.length} Knoten, ${g.edges.length} Beziehungen · Ihr Zugang: <strong>T${g.effectiveTier}</strong>${esc(ds)}` +
+      (g.hiddenNodes ? ` · ${g.hiddenNodes} Knoten durch Level ausgeblendet` : "");
+
+    const byId = {};
+    g.nodes.forEach((n) => { byId[n.id] = n; });
+    const view = $("kg-view");
+
+    // relations first, so the graph structure is visible at a glance
+    if (g.edges.length) {
+      const rel = document.createElement("div");
+      rel.className = "kg-edges";
+      rel.innerHTML = g.edges.map((e) => {
+        const a = byId[e.from], b = byId[e.to];
+        const nm = (n) => n ? `${NODE_ICON[n.type] || "•"} ${esc(n.type)}` : "?";
+        return `<div class="kg-edge">${nm(a)} <span class="rel">—${esc(e.rel)}→</span> ${nm(b)}</div>`;
+      }).join("");
+      view.appendChild(rel);
+    }
+
+    g.nodes.forEach((n) => {
+      const rows = Object.entries(n.attributes)
+        .sort((a, b) => a[1].tier - b[1].tier)
+        .map(([k, v]) => `<tr><td>${esc(v.label || k)} ${tierBadge(v.tier)}</td><td>${esc(
+          typeof v.value === "object" ? JSON.stringify(v.value) : v.value)}</td></tr>`)
+        .join("");
+      const wh = n.withheld.length
+        ? `<div class="muted small">🔒 verborgen: ${n.withheld.map(esc).join(", ")}</div>` : "";
+      const div = document.createElement("div");
+      div.className = "dataset" + (n.id === hit.nodeId ? " focus" : "");
+      div.innerHTML = `
+        <div class="dataset-head">
+          <strong>${NODE_ICON[n.type] || "•"} ${esc(n.type)}</strong>
+          <code class="muted small">${esc(n.id)}</code>
+        </div>
+        ${rows ? `<table class="kv small">${rows}</table>` : ""}
+        ${wh}`;
+      view.appendChild(div);
+    });
+  } catch (e) {
+    $("kg-sub").textContent = "";
+    $("kg-view").innerHTML = `<p class="error">${esc(e.message)}</p>`;
+  }
+}
 
 async function consumeHit(h) {
   $("search-flow-panel").style.display = "";

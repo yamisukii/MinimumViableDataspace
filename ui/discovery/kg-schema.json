@@ -1,17 +1,146 @@
 {
-  "$comment": "Canonical AM2Scale dataspace KG model (rough, from the data-structure sketch). Every company abstracts its ERP/CAD/production data into this shape. Each attribute has a sensitivity tier; the vector search matches over the T1 (searchable) attributes, and results are returned attribute-by-attribute filtered to the requester's effective tier (min(relationship, person) from Phase 5).",
-  "entity": "Bauteil",
-  "searchableAttributes": ["materialkurztext", "werkstoff", "abmasse", "partName"],
-  "attributes": {
-    "partName":        { "tier": 1, "label": "Bauteil",         "source": "Stammdaten" },
-    "materialkurztext":{ "tier": 1, "label": "Materialkurztext", "source": "Stammdaten", "searchable": true },
-    "werkstoff":       { "tier": 1, "label": "Werkstoff",        "source": "Stammdaten", "searchable": true },
-    "abmasse":         { "tier": 1, "label": "Abmaße (L×B×H)",   "source": "Stammdaten", "searchable": true },
-    "verfahren":       { "tier": 2, "label": "Verfahren/Prozess","source": "CAD/Produktion" },
-    "bestand":         { "tier": 2, "label": "Bestand",          "source": "ERP" },
-    "verbrauch":       { "tier": 2, "label": "Verbrauch",        "source": "ERP" },
-    "co2":             { "tier": 2, "label": "kWh/CO₂",          "source": "Infrastruktur" },
-    "cad":             { "tier": 3, "label": "CAD / techn. Zeichnung", "source": "CAD" },
-    "qdata":           { "tier": 3, "label": "Q-Data je Charge", "source": "Fertigung" }
-  }
+  "$comment": "Canonical AM2Scale dataspace KG model, derived from data/AM_Dataset.xlsx. Every company abstracts its ERP/CAD/machine data into these entities. Each attribute carries a sensitivity tier: T1 = discoverable master data (also the vector-search projection), T2 = process/commercial (partners), T3 = drawings, raw machine data, identifiers (subsidiaries only). Search matches over the attributes marked searchable; results are returned attribute-by-attribute filtered to the requester's effective tier = min(relationship, person).",
+  "version": "2.0",
+  "source": "data/AM_Dataset.xlsx",
+  "entities": {
+    "Unternehmen": {
+      "label": "Unternehmen",
+      "sheet": "Unternehmensdaten",
+      "idField": "uId",
+      "attributes": {
+        "uId":              { "tier": 1, "label": "Unternehmens-ID",  "from": "U_ID" },
+        "name":             { "tier": 1, "label": "Unternehmensname", "from": "Unternehmensname", "searchable": true },
+        "stadt":            { "tier": 1, "label": "Stadt",            "from": "Stadt" },
+        "land":             { "tier": 1, "label": "Land",             "from": "Land" },
+        "strasse":          { "tier": 2, "label": "Straße",           "from": "Straße" },
+        "stromtarif":       { "tier": 2, "label": "Stromtarif (€/kWh)", "from": "Stromtarif" },
+        "co2PerKwh":        { "tier": 2, "label": "CO₂ pro kWh",      "from": "CO2_KWh" }
+      }
+    },
+
+    "Bauteil": {
+      "label": "Bauteil / Material",
+      "sheet": "ERP",
+      "idField": "materialnummer",
+      "attributes": {
+        "materialnummer":   { "tier": 1, "label": "Materialnummer",   "from": "Material" },
+        "materialkurztext": { "tier": 1, "label": "Materialkurztext", "from": "Materialkurztext", "searchable": true },
+        "benennung":        { "tier": 1, "label": "Benennung",        "from": "Benennung",        "searchable": true },
+        "kurztext":         { "tier": 1, "label": "Kurztext",         "from": "Kurztext",         "searchable": true },
+        "werkstoff":        { "tier": 1, "label": "Werkstoff",        "from": "Werkstoff",        "searchable": true },
+        "normBezeichnung":  { "tier": 1, "label": "Norm",             "from": "NormBezeichnung",  "searchable": true },
+        "abmessung":        { "tier": 1, "label": "Größe/Abmessung",  "from": "Größe/Abmessung",  "searchable": true },
+        "laenge":           { "tier": 1, "label": "Länge",            "from": "Länge" },
+        "breite":           { "tier": 1, "label": "Breite",           "from": "Breite" },
+        "hoehe":            { "tier": 1, "label": "Höhe",             "from": "Höhe" },
+        "abmessungseinheit":{ "tier": 1, "label": "Abmessungseinheit","from": "Abmessungseinheit" },
+        "volumen":          { "tier": 1, "label": "Volumen",          "from": "Volumen" },
+        "nettogewicht":     { "tier": 1, "label": "Nettogewicht",     "from": "Nettogewicht" },
+        "bruttogewicht":    { "tier": 1, "label": "Bruttogewicht",    "from": "Bruttogewicht" },
+        "gewichtseinheit":  { "tier": 1, "label": "Gewichtseinheit",  "from": "Gewichtseinheit" },
+
+        "bestandsmenge":    { "tier": 2, "label": "Bestandsmenge",    "from": "Bestandsmenge" },
+        "bestandswert":     { "tier": 2, "label": "Bestandswert",     "from": "Bestandswert" },
+        "sicherheitsbestand": { "tier": 2, "label": "Sicherheitsbestand (Ø)", "from": "Sicherheitsbestand_Durchschnitt" },
+        "planlieferzeit":   { "tier": 2, "label": "Planlieferzeit (Ø)", "from": "Planlieferzeit_Durchschnitt" },
+        "preis":            { "tier": 2, "label": "Preis",            "from": "Preis" },
+        "lieferant":        { "tier": 2, "label": "Lieferant",        "from": "Lieferantenname" },
+        "ersteller":        { "tier": 2, "label": "Ersteller",        "from": "Ersteller" },
+
+        "identnummer":      { "tier": 3, "label": "Identnummer",      "from": "Identnummer" },
+        "zeichnungsnummer": { "tier": 3, "label": "Zeichnungsnummer (Hersteller)", "from": "Zeichnungsnummer laut Hersteller" },
+        "dokumentnummer":   { "tier": 3, "label": "Dokumentnummer",   "from": "Dokumentnummer" },
+        "zeichnungsnummerUeb": { "tier": 3, "label": "ÜB-Zeichnungsnummer", "from": "ÜBZchngNr" },
+        "erstellerSachNr":  { "tier": 3, "label": "Ersteller-SachNr", "from": "Ersteller SachNr#" }
+      }
+    },
+
+    "Drucker": {
+      "label": "Drucker",
+      "sheet": "Druckerdaten",
+      "idField": "printId",
+      "attributes": {
+        "printId":          { "tier": 1, "label": "Print-ID",         "from": "Print_ID" },
+        "herstellerName":   { "tier": 1, "label": "Hersteller",       "from": "Printer_Name",  "searchable": true },
+        "modell":           { "tier": 1, "label": "Modell",           "from": "Printer_Model", "searchable": true },
+        "seriennummer":     { "tier": 3, "label": "Seriennummer",     "from": "Seriennummer" },
+        "ipAdresse":        { "tier": 3, "label": "IP-Adresse",       "from": "IP_Adresse" },
+        "mtconnectUrl":     { "tier": 3, "label": "MTConnect-URL",    "from": "mtconnect_url" }
+      }
+    },
+
+    "Produktionsauftrag": {
+      "label": "Produktionsauftrag",
+      "sheet": "Produktionssteuerung",
+      "idField": "auftragId",
+      "attributes": {
+        "auftragId":        { "tier": 1, "label": "Auftrags-ID",      "from": "ID" },
+        "materialnummer":   { "tier": 1, "label": "Materialnummer",   "from": "Materialnummer" },
+        "druckmaterial":    { "tier": 1, "label": "Druckmaterial",    "from": "Material", "searchable": true },
+        "anzahlTeile":      { "tier": 2, "label": "Anzahl Teile",     "from": "Anzahl Teile" },
+        "teileProJob":      { "tier": 2, "label": "Teile pro Job",    "from": "Teile pro job" },
+        "druckzeitProTeil": { "tier": 2, "label": "Druckzeit pro Teil", "from": "Druck Zeit Pro Teil" },
+        "druckzeitJob":     { "tier": 2, "label": "Druckzeit pro Job", "from": "Druckzeit Job" },
+        "druckzeitGesamt":  { "tier": 2, "label": "Druckzeit gesamt", "from": "Druckzeit gesamt" },
+        "materialverbrauchJob": { "tier": 2, "label": "Netto-Materialverbrauch pro Job", "from": "Netto-Materialverbrauch pro Job" },
+        "materialGramm":    { "tier": 2, "label": "Material (g)",     "from": "Material_gramm" },
+        "durchsatz":        { "tier": 2, "label": "Durchsatz",        "from": "Durchsatz" },
+        "anzahlJobs":       { "tier": 2, "label": "Anzahl Jobs",      "from": "Anzahl Jobs" },
+        "istTeile":         { "tier": 2, "label": "IST-Teile",        "from": "IST-Teile" },
+        "teileDiff":        { "tier": 2, "label": "Teile-Differenz",  "from": "Teile Diff" }
+      }
+    },
+
+    "Fertigungsdaten": {
+      "label": "Fertigungsdaten (Charge)",
+      "sheet": "Maschinendaten",
+      "idField": "chargeId",
+      "$comment": "Aggregate of the MTConnect time series per printer; the raw series stays with the owner and is only referenced.",
+      "attributes": {
+        "chargeId":         { "tier": 1, "label": "Chargen-ID" },
+        "printId":          { "tier": 1, "label": "Print-ID" },
+        "messwerte":        { "tier": 2, "label": "Anzahl Messwerte" },
+        "zeitraumVon":      { "tier": 2, "label": "Zeitraum von" },
+        "zeitraumBis":      { "tier": 2, "label": "Zeitraum bis" },
+        "kennzahlen":       { "tier": 3, "label": "Prozess-Kennzahlen (Ø/min/max)" },
+        "rohdatenRef":      { "tier": 3, "label": "Rohdaten-Referenz" }
+      }
+    },
+
+    "DPP": {
+      "label": "Digitaler Produktpass",
+      "sheet": "DPP",
+      "idField": "dppId",
+      "attributes": {
+        "dppId":            { "tier": 1, "label": "DPP-ID" },
+        "materialnummer":   { "tier": 1, "label": "Materialnummer",   "from": "Materialnummer" },
+        "version":          { "tier": 1, "label": "DPP-Version",      "from": "Neue DPP-Version" },
+        "druckdatum":       { "tier": 2, "label": "Druckdatum",       "from": "Druckdatum" },
+        "co2Herstellung":   { "tier": 2, "label": "CO₂ Herstellung",  "from": "CO2 Verbrauch Herstellung" },
+        "co2Betrieb":       { "tier": 2, "label": "CO₂ in Betrieb",   "from": "CO2 Verbrauch in Betrieb" },
+        "chargenId":        { "tier": 3, "label": "Chargen-ID",       "from": "ChargenID" },
+        "wartungsId":       { "tier": 3, "label": "Wartungs-ID",      "from": "WartungsID" },
+        "ereignis":         { "tier": 3, "label": "Ereignis/Änderung","from": "Ereignis/Änderung" },
+        "bearbeiter":       { "tier": 3, "label": "Bearbeiter",       "from": "Bearbeiter" },
+        "anmerkung":        { "tier": 3, "label": "Anmerkung",        "from": "Anmerkung" }
+      }
+    }
+  },
+
+  "relations": [
+    { "from": "Unternehmen",        "rel": "betreibt",    "to": "Drucker" },
+    { "from": "Unternehmen",        "rel": "fertigt",     "to": "Bauteil" },
+    { "from": "Produktionsauftrag", "rel": "fuer",        "to": "Bauteil" },
+    { "from": "Produktionsauftrag", "rel": "laeuft_auf",  "to": "Drucker" },
+    { "from": "Produktionsauftrag", "rel": "erzeugt",     "to": "Fertigungsdaten" },
+    { "from": "Drucker",            "rel": "liefert",     "to": "Fertigungsdaten" },
+    { "from": "Bauteil",            "rel": "hat_dpp",     "to": "DPP" },
+    { "from": "DPP",                "rel": "basiert_auf", "to": "Fertigungsdaten" }
+  ],
+
+  "searchEntity": "Bauteil",
+  "searchableAttributes": [
+    "materialkurztext", "benennung", "kurztext", "werkstoff",
+    "normBezeichnung", "abmessung", "druckmaterial", "modell", "herstellerName", "name"
+  ]
 }

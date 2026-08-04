@@ -19,3 +19,4 @@ __pycache__/
 # discovery vector index (runtime data)
 ui/discovery/index.json
 ui/discovery/__pycache__/
+ui/discovery/kg.json

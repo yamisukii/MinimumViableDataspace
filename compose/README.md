@@ -155,9 +155,21 @@ Einmalig: `python -m pip install model2vec numpy`.
 - „Beziehen" prüft das Level erneut (`/api/offer`) und startet dann den
   EDC-Flow. Ein Asset über dem eigenen Level ist auffindbar, aber nicht beziehbar.
 
-Kanonisches KG-Schema: [ui/discovery/kg-schema.json](../ui/discovery/kg-schema.json).
-Jedes Unternehmen abstrahiert seine Daten in dieses Schema; der Portal-Upload
-erfasst die T1-Felder, „Reindex" veröffentlicht den Bestand einer Firma.
+Kanonisches KG-Schema: [ui/discovery/kg-schema.json](../ui/discovery/kg-schema.json)
+— abgeleitet aus `data/AM_Dataset.xlsx` (Entitäten Unternehmen, Bauteil, Drucker,
+Produktionsauftrag, Fertigungsdaten, DPP mit Tier je Attribut). Jedes Unternehmen
+abstrahiert seine Daten in dieses Schema; der Portal-Upload erfasst die T1-Felder,
+„Reindex" veröffentlicht den Bestand einer Firma.
+
+**KG aus dem Dataset importieren** (Discovery muss laufen):
+
+```powershell
+python ui\discovery\import_dataset.py --all      # alle vier Firmen
+```
+
+Die Suche findet dann auch KG-Knoten (`kind: "kg"`); „Im KG anzeigen" öffnet den
+Nachbarschaftsgraphen — Knoten, Beziehungen und Attribute jeweils auf das
+effektive Level beschnitten. Details: [docs/UPDATE-2026-08-KG-aus-Dataset.md](../docs/UPDATE-2026-08-KG-aus-Dataset.md).
 
 > Hinweis: Der Discovery-Service läuft derzeit als Host-Prozess (wie die Portale).
 > Für Portainer wird er analog containerisiert (Modell ins Image gebacken).

@@ -996,6 +996,21 @@ class Handler(BaseHTTPRequestHandler):
                     h["ownerDisplay"] = names.get(h["owner"], h["owner"])
                     h["own"] = (h["owner"] == sess["company"])
                 self.send_json(200, res)
+            elif path == "/api/kg":
+                sess = self.require_full_session()
+                if not sess:
+                    return
+                b = self.read_json()
+                owner = b.get("owner")
+                if not registry_entry(owner):
+                    self.send_json(404, {"error": "unbekannter Teilnehmer"})
+                    return
+                allow = build_allow_map(sess["company"], sess.get("level"))
+                res = discovery_call("POST", "/kg/graph", {
+                    "owner": owner, "allow": allow,
+                    "focus": b.get("focus"), "depth": int(b.get("depth") or 1),
+                })
+                self.send_json(200, res)
             elif path == "/api/search/reindex":
                 sess = self.require_full_session()
                 if not sess:
