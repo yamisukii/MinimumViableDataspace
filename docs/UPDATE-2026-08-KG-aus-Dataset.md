@@ -36,10 +36,20 @@ python ui\discovery\import_dataset.py --all --dry-run --out kg.json   # nur anse
 ```
 
 Das Workbook enthält **vier Unternehmen** (OEBB, WienerLinien, WienEnergie,
-WienerNetze) und **einen** Produktionsfall. Jeder Dataspace-Teilnehmer wird als
-eigener Teilgraph importiert und spielt dabei eines der Dataset-Unternehmen
-(Standard-Mapping: huber-ag=U1, provider=U2, consumer=U3, rheinmetall=U4).
-Ergebnis je Firma: 6 Knoten, 8 Kanten.
+WienerNetze) und **genau einen** Produktionsfall. Jeder Dataspace-Teilnehmer
+spielt eines der Dataset-Unternehmen (Standard-Mapping: huber-ag=U1,
+provider=U2, consumer=U3, rheinmetall=U4).
+
+Weil es nur einen Produktionsfall gibt, bekommt ihn auch nur **eine** Firma
+(`--case-owner`, Standard huber-ag): 6 Knoten / 8 Kanten. Die übrigen
+Teilnehmer erhalten lediglich ihren Unternehmensknoten — sonst stünde dasselbe
+Bauteil viermal im Dataspace.
+
+**Bauteile sind beziehbar:** Zu jedem Bauteil legt der Import zusätzlich ein
+EDC-Asset an (Stammdatenblatt als JSON im Filestore der Firma) und hinterlegt
+dessen ID im KG-Knoten (`edcAssetId`). Ein Suchtreffer ist damit nicht nur
+Metadatum: „Stammdaten beziehen" startet den regulären EDC-Flow
+(Negotiation → Transfer → Download). Mit `--no-assets` abschaltbar.
 
 ## Level-Filterung (verifiziert)
 
@@ -62,8 +72,12 @@ Die semantische Suche matcht jetzt zusätzlich über die KG-Knoten (T1-Attribute
 - „schneeschutzgitter edelstahl" → **Bauteil**-Knoten (Score 0.64)
 - „stratasys drucker" → **Drucker**-Knoten (Score 0.61)
 
-Treffer sind als `kind: "kg"` markiert; im Portal öffnet „Im KG anzeigen" den
-Nachbarschaftsgraphen (Knoten + Beziehungen), ebenfalls level-gefiltert.
+Treffer sind als `kind: "kg"` markiert. Im Portal öffnet „Im KG anzeigen" den
+Nachbarschaftsgraphen — als **gezeichneter Graph** (SVG: Fokusknoten in der
+Mitte, Nachbarn auf Ringen, beschriftete Kanten; Klick auf einen Knoten springt
+zu seinen Details) plus Detailkarten je Knoten, alles level-gefiltert.
+Hat das Bauteil ein verknüpftes EDC-Asset, steht zusätzlich
+„Stammdaten beziehen" bereit.
 
 Neue Endpunkte: `POST /kg/publish`, `POST /kg/graph` (Discovery) ·
 `POST /api/kg` (Portal, baut die allow-Map aus den Beziehungs-/Person-Leveln).

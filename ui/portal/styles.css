@@ -242,12 +242,26 @@ button.ghost-dark { background: #e8eef2; color: var(--text); }
 .score { color: var(--muted); font-size: 11px; }
 
 .kg-badge { background: #e6e2f4; color: #443168; }
-.kg-edges {
-  background: #f7fafb; border: 1px solid var(--border); border-radius: 8px;
-  padding: 10px 14px; margin-bottom: 12px; font-size: 13px;
-}
-.kg-edge { padding: 2px 0; }
-.kg-edge .rel { color: var(--muted); font-family: Consolas, monospace; font-size: 12px; }
 .dataset.focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,86,110,0.12); }
+.dataset.flash { animation: flash 1.2s ease-out; }
+@keyframes flash {
+  from { background: #fdf3d7; }
+  to { background: transparent; }
+}
+
+.kg-graph {
+  background: #fbfcfd; border: 1px solid var(--border);
+  border-radius: 8px; margin-bottom: 14px; overflow-x: auto;
+}
+.kg-graph svg { display: block; min-width: 560px; }
+.kg-node { cursor: pointer; }
+.kg-node:hover circle { filter: brightness(1.15); }
+.kg-ico { font-size: 16px; }
+.kg-lbl { font-size: 11px; font-weight: 600; fill: var(--text); }
+.kg-sub { font-size: 9.5px; fill: var(--muted); }
+.kg-rel-label {
+  font-size: 9px; fill: var(--muted); text-anchor: middle;
+  font-family: Consolas, monospace;
+}
 #search-q { flex: 1; min-width: 240px; }
 #search-results .dataset-head span { display: inline-flex; align-items: center; gap: 8px; }

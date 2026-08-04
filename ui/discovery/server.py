@@ -223,11 +223,14 @@ def kg_search(query_vec, allow, limit=20):
             if "vector" not in n or node_tier(n) > cap:
                 continue
             f = filter_node(n, cap)
+            # a KG node is retrievable when the owner published a matching EDC asset
+            edc_asset = n.get("attrs", {}).get("edcAssetId")
             hits.append({
                 "kind": "kg", "owner": owner, "nodeId": n["id"], "nodeType": n["type"],
-                "assetId": n["id"], "score": round(cosine(query_vec, n["vector"]), 4),
+                "assetId": edc_asset or n["id"], "edcAssetId": edc_asset,
+                "score": round(cosine(query_vec, n["vector"]), 4),
                 "attributes": f["attributes"], "withheld": f["withheld"],
-                "retrievable": False,   # KG nodes are metadata; files come via EDC assets
+                "retrievable": bool(edc_asset),
             })
     hits.sort(key=lambda h: h["score"], reverse=True)
     return hits[:limit]

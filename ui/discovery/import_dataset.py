@@ -129,8 +129,13 @@ def aggregate_machine_data(wb, print_id, include_metrics=False):
     return node(f"charge:{print_id}", "Fertigungsdaten", {k: v for k, v in attrs.items() if v is not None})
 
 
-def build_graph(wb, company, uid, include_metrics=False):
-    """Build one participant's subgraph, playing dataset company `uid`."""
+def build_graph(wb, company, uid, include_metrics=False, with_case=True):
+    """Build one participant's subgraph, playing dataset company `uid`.
+
+    `with_case=False` yields only the company node — for participants that take
+    part in the dataspace but do not own the workbook's single production case.
+    (The workbook holds exactly one part/printer/order/DPP, so handing that same
+    case to every participant would show the identical part four times.)"""
     nodes, edges = [], []
 
     def edge(a, rel, b):
@@ -143,6 +148,15 @@ def build_graph(wb, company, uid, include_metrics=False):
         raise SystemExit(f"U_ID '{uid}' nicht im Dataset (vorhanden: {sorted(firms)})")
     firm_id = f"unternehmen:{uid}"
     nodes.append(node(firm_id, "Unternehmen", map_attrs("Unternehmen", firm_row)))
+
+    if not with_case:
+        return {
+            "owner": company,
+            "did": f"did:web:identityhub-{company}%3A7083:{company}",
+            "datasetCompany": {"uId": uid, "name": clean(firm_row.get("Unternehmensname"))},
+            "nodes": nodes,
+            "edges": edges,
+        }
 
     # --- Drucker -----------------------------------------------------------
     printer_ids = []
@@ -212,6 +226,84 @@ def build_graph(wb, company, uid, include_metrics=False):
     }
 
 
+# ------------------------------------------------- EDC assets for KG parts
+
+TRAEFIK = "http://127.0.0.1:80"
+API_KEY = "password"
+COMPANIES_DIR = REPO / "compose" / "companies"
+
+
+def mgmt(company, method, path, payload=None, timeout=30):
+    body = json.dumps(payload).encode("utf-8") if payload is not None else None
+    req = urllib.request.Request(f"{TRAEFIK}{path}", data=body, method=method)
+    req.add_header("Host", f"cp.{company}.localhost")
+    req.add_header("X-Api-Key", API_KEY)
+    if body is not None:
+        req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+        return json.loads(raw.decode("utf-8")) if raw else None
+
+
+def create_part_asset(company, part_node):
+    """Publish a Bauteil's master-data sheet as a retrievable EDC asset, so a
+    search hit is not just metadata but something a partner can actually fetch.
+    Returns the asset id, or None if the connector is unreachable."""
+    attrs = part_node["attrs"]
+    matnr = attrs.get("materialnummer") or part_node["id"].split(":")[-1]
+    asset_id = f"stammdaten-{matnr}"
+    filename = f"{asset_id}.json"
+
+    # T1 master data = what the datasheet contains
+    sheet = {k: v for k, v in attrs.items()
+             if SCHEMA["entities"]["Bauteil"]["attributes"].get(k, {}).get("tier") == 1}
+    store = COMPANIES_DIR / company / "storage" / "assets"
+    store.mkdir(parents=True, exist_ok=True)
+    (store / filename).write_text(json.dumps(sheet, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    properties = {
+        "name": f"Stammdatenblatt {attrs.get('benennung') or matnr}",
+        "description": f"Stammdaten zu {attrs.get('benennung') or matnr} (aus dem KG)",
+        "am2scale:partName": attrs.get("benennung") or attrs.get("kurztext") or matnr,
+        "am2scale:material": attrs.get("materialkurztext", ""),
+        "am2scale:werkstoff": attrs.get("werkstoff", ""),
+        "am2scale:abmasse": attrs.get("abmessung", ""),
+        "am2scale:kgNode": part_node["id"],
+        "am2scale:tier": "1",
+        "am2scale:fileName": filename,
+        "am2scale:fileFormat": "JSON",
+    }
+    try:
+        try:
+            mgmt(company, "POST", "/api/mgmt/v4/assets", {
+                "@context": ["https://w3id.org/edc/connector/management/v2"],
+                "@id": asset_id, "@type": "Asset", "properties": properties,
+                "dataAddress": {"@type": "DataAddress", "type": "HttpData",
+                                "baseUrl": f"http://filestore-{company}/{filename}",
+                                "proxyPath": "true", "proxyQueryParams": "true"},
+            })
+        except urllib.error.HTTPError as e:
+            if e.code != 409:
+                raise
+        try:
+            mgmt(company, "POST", "/api/mgmt/v4/contractdefinitions", {
+                "@context": ["https://w3id.org/edc/connector/management/v2"],
+                "@id": f"{asset_id}-def", "@type": "ContractDefinition",
+                "accessPolicyId": f"{company}-require-membership",
+                "contractPolicyId": f"{company}-require-manufacturer",
+                "assetsSelector": {"@type": "Criterion",
+                                   "operandLeft": "https://w3id.org/edc/v0.0.1/ns/id",
+                                   "operator": "=", "operandRight": asset_id},
+            })
+        except urllib.error.HTTPError as e:
+            if e.code != 409:
+                raise
+        return asset_id
+    except (urllib.error.HTTPError, urllib.error.URLError) as e:
+        print(f"  ! EDC-Asset für {matnr} nicht angelegt ({e}) — läuft der Stack?")
+        return None
+
+
 # ------------------------------------------------------------------ publish
 
 def publish(graph):
@@ -232,7 +324,14 @@ def main():
     ap = argparse.ArgumentParser(description="Baut den Dataspace-KG aus AM_Dataset.xlsx")
     ap.add_argument("--company", help="Dataspace-Teilnehmer (z.B. huber-ag)")
     ap.add_argument("--uid", help="Dataset-Unternehmen, das die Firma spielt (U1..U4)")
-    ap.add_argument("--all", action="store_true", help="alle vier Firmen laut Standard-Mapping importieren")
+    ap.add_argument("--all", action="store_true",
+                    help="alle vier Firmen laut Standard-Mapping importieren; nur --case-owner "
+                         "erhält den Produktionsfall, die übrigen nur ihren Unternehmensknoten")
+    ap.add_argument("--case-owner", default="huber-ag",
+                    help="welche Firma den Produktionsfall (Bauteil/Drucker/Auftrag/DPP) besitzt "
+                         "(Standard: huber-ag)")
+    ap.add_argument("--no-assets", action="store_true",
+                    help="keine EDC-Assets für die Bauteile anlegen")
     ap.add_argument("--dry-run", action="store_true", help="nur bauen, nicht publizieren")
     ap.add_argument("--out", help="Graph zusätzlich als JSON-Datei schreiben")
     ap.add_argument("--include-metrics", action="store_true",
@@ -250,13 +349,23 @@ def main():
 
     targets = list(DEFAULT_MAPPING.items()) if args.all else [(args.uid, args.company)]
     for uid, company in targets:
-        graph = build_graph(wb, company, uid, args.include_metrics)
+        # only one participant owns the workbook's single production case
+        with_case = (company == args.case_owner) if args.all else True
+        graph = build_graph(wb, company, uid, args.include_metrics, with_case)
         by_type = {}
         for n in graph["nodes"]:
             by_type[n["type"]] = by_type.get(n["type"], 0) + 1
-        print(f"\n{company}  (spielt {uid} / {graph['datasetCompany']['name']})")
+        print(f"\n{company}  (spielt {uid} / {graph['datasetCompany']['name']})"
+              + ("" if with_case else "  — nur Unternehmensknoten"))
         print(f"  Knoten: {len(graph['nodes'])}  {by_type}")
         print(f"  Kanten: {len(graph['edges'])}")
+        if with_case and not args.no_assets and not args.dry_run:
+            for n in graph["nodes"]:
+                if n["type"] == "Bauteil":
+                    aid = create_part_asset(company, n)
+                    if aid:
+                        n["attrs"]["edcAssetId"] = aid
+                        print(f"  EDC-Asset: {aid} (beziehbar)")
         if args.out:
             out = Path(args.out) if len(targets) == 1 else Path(args.out).with_name(
                 f"{Path(args.out).stem}-{company}{Path(args.out).suffix or '.json'}")

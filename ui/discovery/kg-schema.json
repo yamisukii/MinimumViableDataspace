@@ -24,6 +24,7 @@
       "idField": "materialnummer",
       "attributes": {
         "materialnummer":   { "tier": 1, "label": "Materialnummer",   "from": "Material" },
+        "edcAssetId":       { "tier": 1, "label": "Beziehbares EDC-Asset" },
         "materialkurztext": { "tier": 1, "label": "Materialkurztext", "from": "Materialkurztext", "searchable": true },
         "benennung":        { "tier": 1, "label": "Benennung",        "from": "Benennung",        "searchable": true },
         "kurztext":         { "tier": 1, "label": "Kurztext",         "from": "Kurztext",         "searchable": true },

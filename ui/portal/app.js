@@ -502,10 +502,13 @@ $("search-form").addEventListener("submit", async (ev) => {
       const withheld = (h.withheld || []).length
         ? `<div class="muted small">🔒 durch Level verborgen: ${h.withheld.map(esc).join(", ")}</div>` : "";
       const isKg = h.kind === "kg";
+      // KG nodes are metadata; they are only retrievable when their owner
+      // published a matching EDC asset (then both actions are offered)
       const btn = isKg
-        ? `<button class="mini">Im KG anzeigen</button>`
+        ? `<button class="mini" data-act="kg">Im KG anzeigen</button>` +
+          (h.retrievable ? ` <button class="mini" data-act="get">Stammdaten beziehen</button>` : "")
         : (h.retrievable
-            ? `<button class="mini">Beziehen</button>`
+            ? `<button class="mini" data-act="get">Beziehen</button>`
             : `<span class="muted small">kein Bezug (Level)</span>`);
       const title = (h.attributes.benennung || h.attributes.materialkurztext ||
                      h.attributes.name || h.attributes.modell ||
@@ -522,8 +525,10 @@ $("search-form").addEventListener("submit", async (ev) => {
           · ${isKg ? "Knoten" : "Asset"}: <code>${esc(h.assetId)}</code></div>
         ${attrRows ? `<table class="kv small">${attrRows}</table>` : ""}
         ${withheld}`;
-      const b = div.querySelector("button");
-      if (b) b.addEventListener("click", () => isKg ? showKg(h) : consumeHit(h));
+      div.querySelectorAll("button[data-act]").forEach((b) => {
+        b.addEventListener("click", () =>
+          b.dataset.act === "kg" ? showKg(h) : consumeHit(h));
+      });
       el.appendChild(div);
     });
   } catch (e) {
@@ -550,6 +555,94 @@ const NODE_ICON = {
   Produktionsauftrag: "📋", Fertigungsdaten: "📈", DPP: "📄",
 };
 
+// Simple force-free layout: entities sit on concentric rings around the focus
+// node, so the structure reads at a glance without any external library.
+const NODE_COLOR = {
+  Unternehmen: "#00566e", Bauteil: "#1c6b34", Drucker: "#8a6410",
+  Produktionsauftrag: "#33475b", Fertigungsdaten: "#6b3fa0", DPP: "#a12727",
+};
+
+function renderGraphSvg(g, focusId) {
+  const W = 660, H = 340, cx = W / 2, cy = H / 2;
+  const nodes = g.nodes.slice();
+  const focus = nodes.find((n) => n.id === focusId) || nodes[0];
+
+  // ring 1 = direct neighbours of the focus, ring 2 = the rest
+  const adj = new Set();
+  g.edges.forEach((e) => {
+    if (e.from === focus.id) adj.add(e.to);
+    if (e.to === focus.id) adj.add(e.from);
+  });
+  const inner = nodes.filter((n) => n.id !== focus.id && adj.has(n.id));
+  const outer = nodes.filter((n) => n.id !== focus.id && !adj.has(n.id));
+
+  const pos = { [focus.id]: { x: cx, y: cy } };
+  const place = (list, r) => list.forEach((n, i) => {
+    const a = (2 * Math.PI * i) / list.length - Math.PI / 2;
+    pos[n.id] = { x: cx + r * Math.cos(a) * 1.55, y: cy + r * Math.sin(a) };
+  });
+  place(inner, 105);
+  place(outer, 155);
+
+  const label = (n) => {
+    const a = n.attributes || {};
+    const v = (a.benennung || a.name || a.modell || a.auftragId ||
+               a.chargeId || a.dppId || {}).value;
+    return v ? String(v).slice(0, 22) : n.type;
+  };
+
+  const edges = g.edges.map((e) => {
+    const p = pos[e.from], q = pos[e.to];
+    if (!p || !q) return "";
+    const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
+    return `<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}"
+                  stroke="#b9c4cc" stroke-width="1.5" marker-end="url(#arrow)"/>
+            <text x="${mx}" y="${my - 3}" class="kg-rel-label">${esc(e.rel)}</text>`;
+  }).join("");
+
+  const circles = nodes.map((n) => {
+    const p = pos[n.id];
+    const isFocus = n.id === focus.id;
+    const col = NODE_COLOR[n.type] || "#33475b";
+    const hidden = (n.withheld || []).length;
+    return `<g class="kg-node" data-node="${esc(n.id)}">
+        <circle cx="${p.x}" cy="${p.y}" r="${isFocus ? 26 : 21}" fill="${col}"
+                stroke="${isFocus ? "#111" : "#fff"}" stroke-width="${isFocus ? 3 : 2}"/>
+        <text x="${p.x}" y="${p.y + 5}" text-anchor="middle" class="kg-ico">${NODE_ICON[n.type] || "•"}</text>
+        <text x="${p.x}" y="${p.y + (isFocus ? 42 : 37)}" text-anchor="middle" class="kg-lbl">${esc(label(n))}</text>
+        <text x="${p.x}" y="${p.y + (isFocus ? 54 : 49)}" text-anchor="middle" class="kg-sub">${esc(n.type)}${
+          hidden ? ` · 🔒${hidden}` : ""}</text>
+      </g>`;
+  }).join("");
+
+  const wrap = document.createElement("div");
+  wrap.className = "kg-graph";
+  wrap.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Knowledge-Graph">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="26" refY="5"
+                markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#b9c4cc"/>
+        </marker>
+      </defs>
+      ${edges}${circles}
+    </svg>`;
+  // clicking a circle scrolls to that node's detail card
+  wrap.querySelectorAll(".kg-node").forEach((el) => {
+    el.addEventListener("click", () => {
+      const card = document.getElementById("kgcard-" + cssId(el.dataset.node));
+      if (card) {
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        card.classList.add("flash");
+        setTimeout(() => card.classList.remove("flash"), 1200);
+      }
+    });
+  });
+  return wrap;
+}
+
+const cssId = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, "_");
+
 async function showKg(hit) {
   const panel = $("kg-panel");
   panel.style.display = "";
@@ -571,17 +664,8 @@ async function showKg(hit) {
     g.nodes.forEach((n) => { byId[n.id] = n; });
     const view = $("kg-view");
 
-    // relations first, so the graph structure is visible at a glance
-    if (g.edges.length) {
-      const rel = document.createElement("div");
-      rel.className = "kg-edges";
-      rel.innerHTML = g.edges.map((e) => {
-        const a = byId[e.from], b = byId[e.to];
-        const nm = (n) => n ? `${NODE_ICON[n.type] || "•"} ${esc(n.type)}` : "?";
-        return `<div class="kg-edge">${nm(a)} <span class="rel">—${esc(e.rel)}→</span> ${nm(b)}</div>`;
-      }).join("");
-      view.appendChild(rel);
-    }
+    // draw the graph itself, then the node details below it
+    if (g.nodes.length) view.appendChild(renderGraphSvg(g, hit.nodeId));
 
     g.nodes.forEach((n) => {
       const rows = Object.entries(n.attributes)
@@ -593,6 +677,7 @@ async function showKg(hit) {
         ? `<div class="muted small">🔒 verborgen: ${n.withheld.map(esc).join(", ")}</div>` : "";
       const div = document.createElement("div");
       div.className = "dataset" + (n.id === hit.nodeId ? " focus" : "");
+      div.id = "kgcard-" + cssId(n.id);
       div.innerHTML = `
         <div class="dataset-head">
           <strong>${NODE_ICON[n.type] || "•"} ${esc(n.type)}</strong>
@@ -609,16 +694,19 @@ async function showKg(hit) {
 }
 
 async function consumeHit(h) {
+  // for KG hits the retrievable thing is the linked EDC asset, not the node
+  const assetId = h.edcAssetId || h.assetId;
+  const label = (h.attributes.benennung || h.attributes.partName ||
+                 h.attributes.materialkurztext || {}).value || assetId;
   $("search-flow-panel").style.display = "";
-  $("search-flow-title").textContent =
-    `${(h.attributes.partName && h.attributes.partName.value) || h.assetId} (von ${h.ownerDisplay})`;
+  $("search-flow-title").textContent = `${label} (von ${h.ownerDisplay})`;
   $("search-flow-steps").innerHTML = "";
   $("search-flow-result").innerHTML = "";
   $("search-flow-panel").scrollIntoView({ behavior: "smooth" });
   try {
     if (h.own) throw new Error("Eigenes Asset – kein Bezug nötig.");
     const { offer } = await api(
-      `/api/offer?partner=${encodeURIComponent(h.owner)}&assetId=${encodeURIComponent(h.assetId)}`);
+      `/api/offer?partner=${encodeURIComponent(h.owner)}&assetId=${encodeURIComponent(assetId)}`);
     await runFlow({ name: h.owner, displayName: h.ownerDisplay }, offer,
                   "search-flow-steps", "search-flow-result");
   } catch (e) {
