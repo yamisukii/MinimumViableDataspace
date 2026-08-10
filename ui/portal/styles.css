@@ -239,9 +239,20 @@ button.ghost-dark { background: #e8eef2; color: var(--text); }
 }
 #relationships select { min-width: 120px; }
 
-.score { color: var(--muted); font-size: 11px; }
+.score {
+  color: var(--muted); font-size: 11px; background: #eef2f4;
+  padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+}
 
-.kg-badge { background: #e6e2f4; color: #443168; }
+/* type-pill: same icon+colour vocabulary in search hits and KG detail cards,
+   so an entity is recognisable at a glance no matter where it shows up */
+.type-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+  white-space: nowrap;
+  background: var(--chip-bg, #eef2f4); color: var(--chip-fg, #33475b);
+}
+
 .dataset.focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,86,110,0.12); }
 .dataset.flash { animation: flash 1.2s ease-out; }
 @keyframes flash {
@@ -264,4 +275,21 @@ button.ghost-dark { background: #e8eef2; color: var(--text); }
   font-family: Consolas, monospace;
 }
 #search-q { flex: 1; min-width: 240px; }
-#search-results .dataset-head span { display: inline-flex; align-items: center; gap: 8px; }
+
+.dataset-title-row { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dataset-actions { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* filter chips above the search results: toggle a type on/off, never a hard
+   delete — the count stays visible so you know what you're hiding */
+.search-filter { margin: 10px 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: #fff; color: var(--muted);
+  opacity: 0.55;
+}
+.filter-chip.active {
+  opacity: 1; color: var(--chip-fg, var(--text));
+  background: var(--chip-bg, #eef2f4);
+  border-color: var(--chip-fg, var(--border));
+}

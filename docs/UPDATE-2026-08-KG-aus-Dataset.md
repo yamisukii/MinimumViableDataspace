@@ -102,15 +102,41 @@ Neue Endpunkte: `POST /kg/publish`, `POST /kg/graph` (Discovery) ·
 4. Das Blatt **„Technischedaten"** ist leer (nur Überschriften) und wird
    übersprungen; seine Felder sind ohnehin in ERP enthalten.
 
+## Nachbesserungen (nach erstem Testlauf)
+
+Drei Probleme, die beim ersten Durchklicken auffielen, sind behoben:
+
+1. **Vier identische Schneeschutzgitter.** Ursache: das Workbook hat nur einen
+   Produktionsfall, aber der Import gab ihn allen vier Firmen. Jetzt bekommt
+   nur **eine** Firma (`--case-owner`, Standard huber-ag) den vollen Fall
+   (Bauteil/Drucker/Auftrag/Charge/DPP); die übrigen erhalten nur ihren
+   Unternehmensknoten.
+2. **Bauteil war nicht beziehbar.** Ein KG-Knoten ist Metadatum, kein Asset —
+   ein Treffer ohne Handlungsmöglichkeit ist eine Sackgasse. Der Import legt
+   pro Bauteil jetzt zusätzlich ein **EDC-Asset** an (Stammdatenblatt als JSON
+   im Filestore der Firma) und verknüpft dessen ID im KG-Knoten
+   (`edcAssetId`). Ein Treffer bietet dadurch „Im KG anzeigen" **und**
+   „Stammdaten beziehen" (regulärer EDC-Vertragsweg). Verifiziert
+   Ende-zu-Ende: Suche → Negotiation → Transfer → Datei liegt beim Empfänger.
+3. **Suchergebnisse schwer unterscheidbar / Unternehmen verstopfen die Liste.**
+   Jeder Treffer trägt jetzt einen farbigen **Typ-Chip** (Icon + Farbe je
+   Entität: ⚙️ Bauteil, 🖨️ Drucker, 📋 Auftrag, 📈 Fertigungsdaten, 📄 DPP,
+   🏢 Unternehmen, 📦 Katalog-Asset) — dieselbe Farbe/Icon-Sprache wie in der
+   KG-Graph-Ansicht, damit ein Treffer über beide Ansichten hinweg
+   wiedererkennbar ist. Über der Trefferliste stehen **Filter-Chips** pro
+   vorkommendem Typ (mit Trefferzahl); „Unternehmen" ist standardmäßig
+   ausgeblendet, aber per Klick jederzeit wieder einblendbar — nichts wird
+   hart entfernt.
+
+## KG-Visualisierung im Portal
+
+„Im KG anzeigen" zeichnet den Nachbarschaftsgraphen als SVG (Fokusknoten in
+der Mitte, Nachbarn auf Ringen, beschriftete gerichtete Kanten, Klick auf
+einen Knoten springt zu seiner Detailkarte) — level-gefiltert wie die Suche.
+Alternativ: [Neo4j-Export](../docs/NEO4J-Visualisierung.md) für eine
+vollwertige Graphdatenbank-Ansicht.
+
 ## Nächste Schritte
 
 - Dataset-Export korrigieren (Spaltenversatz), dann Kennzahlen aktivieren.
-- Mehr Bauteile für eine aussagekräftigere Suche.
-- Portal-UI der KG-Ansicht am laufenden Stack durchklicken (siehe unten).
-
-> **Hinweis:** Die KG-Ansicht im Portal konnte nicht am laufenden System
-> durchgeklickt werden, weil WSL/Podman aktuell nicht startet
-> („Anmeldung fehlgeschlagen … Anmeldetyp", WSL-Fehler `0x80070569`) und damit
-> Keycloak für den Login fehlt. Die Route selbst wurde gegen den laufenden
-> Discovery-Service verifiziert (Level-Filter korrekt), nur der UI-Klickpfad
-> steht noch aus.
+- Mehr Bauteile für eine aussagekräftigere Suche (aktuell nur eines im Dataset).

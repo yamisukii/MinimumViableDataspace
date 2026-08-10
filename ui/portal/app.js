@@ -481,58 +481,139 @@ $("person-form").addEventListener("submit", async (ev) => {
 });
 
 // ------------------------------------------------------------- vector search
+//
+// A hit is either a KG node (metadata about an entity from the dataspace's
+// knowledge graph — Bauteil, Drucker, Unternehmen, ...) or a plain catalog
+// asset (a file a company uploaded through "Meine Assets"). Both can appear
+// for the same query, which is confusing unless the type is visually obvious
+// at a glance — hence one shared icon+colour per type, used consistently here
+// and in the KG detail view below.
+const TYPE_META = {
+  Bauteil:            { icon: "⚙️", label: "Bauteil",          fg: "#1c6b34", bg: "#e2f4e8" },
+  Drucker:            { icon: "🖨️", label: "Drucker",          fg: "#8a6410", bg: "#fdf3d7" },
+  Produktionsauftrag: { icon: "📋", label: "Auftrag",          fg: "#33475b", bg: "#e8eef2" },
+  Fertigungsdaten:    { icon: "📈", label: "Fertigungsdaten",  fg: "#6b3fa0", bg: "#ece7f7" },
+  DPP:                { icon: "📄", label: "DPP",              fg: "#a12727", bg: "#fbe3e3" },
+  Unternehmen:        { icon: "🏢", label: "Unternehmen",      fg: "#5a6570", bg: "#eceff1" },
+  asset:              { icon: "📦", label: "Katalog-Asset",    fg: "#00566e", bg: "#e6f0f3" },
+};
+const typeMeta = (key) => TYPE_META[key] || { icon: "•", label: key, fg: "#33475b", bg: "#eef2f4" };
+const hitTypeKey = (h) => (h.kind === "kg" ? h.nodeType : "asset");
+
+let lastSearchHits = [];
+// Unternehmen-Knoten sind meist wenig hilfreich (kein Bezug möglich) und
+// überfluten die Trefferliste — deshalb standardmäßig ausgeblendet, aber per
+// Filter-Chip jederzeit wieder einblendbar (nicht hart entfernt).
+let searchHiddenTypes = new Set(["Unternehmen"]);
+
+function renderSearchFilterBar() {
+  const bar = $("search-filter");
+  const seen = new Map();
+  lastSearchHits.forEach((h) => {
+    const key = hitTypeKey(h);
+    const m = typeMeta(key);
+    const cur = seen.get(key) || { ...m, count: 0 };
+    cur.count++;
+    seen.set(key, cur);
+  });
+  if (!seen.size) {
+    bar.classList.add("hidden");
+    bar.innerHTML = "";
+    return;
+  }
+  bar.classList.remove("hidden");
+  bar.innerHTML = `<span class="muted small">Anzeigen:</span> ` +
+    Array.from(seen.entries()).map(([key, m]) => {
+      const active = !searchHiddenTypes.has(key);
+      return `<button type="button" class="filter-chip${active ? " active" : ""}" data-key="${esc(key)}"
+                style="--chip-fg:${m.fg};--chip-bg:${m.bg}">${m.icon} ${esc(m.label)}
+                <span class="muted">(${m.count})</span></button>`;
+    }).join(" ");
+  bar.querySelectorAll(".filter-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.key;
+      if (searchHiddenTypes.has(key)) searchHiddenTypes.delete(key); else searchHiddenTypes.add(key);
+      renderSearchFilterBar();
+      renderSearchResults();
+    });
+  });
+}
+
+function renderSearchResults() {
+  const el = $("search-results");
+  if (!lastSearchHits.length) {
+    el.innerHTML = '<p class="muted">Keine Treffer. (Ggf. erst „Reindex" klicken.)</p>';
+    return;
+  }
+  const visible = lastSearchHits.filter((h) => !searchHiddenTypes.has(hitTypeKey(h)));
+  if (!visible.length) {
+    el.innerHTML = '<p class="muted">Alle Treffer sind über die Filter oben ausgeblendet.</p>';
+    return;
+  }
+  el.innerHTML = "";
+  visible.forEach((h) => {
+    const meta = typeMeta(hitTypeKey(h));
+    const attrRows = Object.entries(h.attributes || {})
+      .sort((a, b) => a[1].tier - b[1].tier)
+      .map(([k, v]) => `<tr><td>${esc(v.label || k)} ${tierBadge(v.tier)}</td><td>${esc(v.value)}</td></tr>`)
+      .join("");
+    const withheld = (h.withheld || []).length
+      ? `<div class="muted small">🔒 durch Level verborgen: ${h.withheld.map(esc).join(", ")}</div>` : "";
+    const isKg = h.kind === "kg";
+    // KG nodes are metadata; they are only retrievable when their owner
+    // published a matching EDC asset (then both actions are offered)
+    const btn = isKg
+      ? `<button class="mini" data-act="kg">Im KG anzeigen</button>` +
+        (h.retrievable ? ` <button class="mini" data-act="get">Stammdaten beziehen</button>` : "")
+      : (h.retrievable
+          ? `<button class="mini" data-act="get">Beziehen</button>`
+          : `<span class="muted small">kein Bezug (Level)</span>`);
+    const title = (h.attributes.benennung || h.attributes.materialkurztext ||
+                   h.attributes.name || h.attributes.modell ||
+                   h.attributes.partName || {}).value || h.assetId;
+    const div = document.createElement("div");
+    div.className = "dataset";
+    div.style.borderLeft = `4px solid ${meta.fg}`;
+    div.innerHTML = `
+      <div class="dataset-head">
+        <div class="dataset-title-row">
+          <span class="type-pill" style="--chip-fg:${meta.fg};--chip-bg:${meta.bg}">${meta.icon} ${esc(meta.label)}</span>
+          <strong>${esc(title)}</strong>
+        </div>
+        <span class="dataset-actions">
+          ${!isKg ? tierBadge(h.fileTier) : ""}
+          <span class="score" title="Ähnlichkeit zur Suchanfrage">${Math.round(h.score * 100)}%</span>
+          ${btn}
+        </span>
+      </div>
+      <div class="muted small">Anbieter: <strong>${esc(h.ownerDisplay)}</strong>${h.own ? " (eigenes)" : ""}
+        · ${isKg ? "KG-Knoten" : "Datei"}: <code>${esc(h.assetId)}</code></div>
+      ${attrRows ? `<table class="kv small">${attrRows}</table>` : ""}
+      ${withheld}`;
+    div.querySelectorAll("button[data-act]").forEach((b) => {
+      b.addEventListener("click", () =>
+        b.dataset.act === "kg" ? showKg(h) : consumeHit(h));
+    });
+    el.appendChild(div);
+  });
+}
+
 $("search-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const msg = $("search-msg");
-  const el = $("search-results");
   msg.className = "hidden";
-  el.innerHTML = '<p class="muted">Suche…</p>';
+  $("search-filter").classList.add("hidden");
+  $("search-results").innerHTML = '<p class="muted">Suche…</p>';
   try {
     const data = await api("/api/search", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: $("search-q").value }),
     });
-    const hits = data.hits || [];
-    el.innerHTML = hits.length ? "" : '<p class="muted">Keine Treffer. (Ggf. erst „Reindex" klicken.)</p>';
-    hits.forEach((h) => {
-      const attrRows = Object.entries(h.attributes || {})
-        .sort((a, b) => a[1].tier - b[1].tier)
-        .map(([k, v]) => `<tr><td>${esc(k)} ${tierBadge(v.tier)}</td><td>${esc(v.value)}</td></tr>`)
-        .join("");
-      const withheld = (h.withheld || []).length
-        ? `<div class="muted small">🔒 durch Level verborgen: ${h.withheld.map(esc).join(", ")}</div>` : "";
-      const isKg = h.kind === "kg";
-      // KG nodes are metadata; they are only retrievable when their owner
-      // published a matching EDC asset (then both actions are offered)
-      const btn = isKg
-        ? `<button class="mini" data-act="kg">Im KG anzeigen</button>` +
-          (h.retrievable ? ` <button class="mini" data-act="get">Stammdaten beziehen</button>` : "")
-        : (h.retrievable
-            ? `<button class="mini" data-act="get">Beziehen</button>`
-            : `<span class="muted small">kein Bezug (Level)</span>`);
-      const title = (h.attributes.benennung || h.attributes.materialkurztext ||
-                     h.attributes.name || h.attributes.modell ||
-                     h.attributes.partName || {}).value || h.assetId;
-      const div = document.createElement("div");
-      div.className = "dataset";
-      div.innerHTML = `
-        <div class="dataset-head">
-          <strong>${esc(title)}</strong>
-          <span>${isKg ? `<span class="tier kg-badge">KG · ${esc(h.nodeType)}</span>` : tierBadge(h.fileTier)}
-            <span class="score">score ${h.score}</span> ${btn}</span>
-        </div>
-        <div class="muted small">Anbieter: <strong>${esc(h.ownerDisplay)}</strong>${h.own ? " (eigenes)" : ""}
-          · ${isKg ? "Knoten" : "Asset"}: <code>${esc(h.assetId)}</code></div>
-        ${attrRows ? `<table class="kv small">${attrRows}</table>` : ""}
-        ${withheld}`;
-      div.querySelectorAll("button[data-act]").forEach((b) => {
-        b.addEventListener("click", () =>
-          b.dataset.act === "kg" ? showKg(h) : consumeHit(h));
-      });
-      el.appendChild(div);
-    });
+    lastSearchHits = data.hits || [];
+    renderSearchFilterBar();
+    renderSearchResults();
   } catch (e) {
-    el.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+    $("search-results").innerHTML = `<p class="error">${esc(e.message)}</p>`;
   }
 });
 
@@ -550,18 +631,10 @@ $("reindex-btn").addEventListener("click", async () => {
 });
 
 // -------------------------------------------------------- knowledge graph
-const NODE_ICON = {
-  Unternehmen: "🏢", Bauteil: "⚙️", Drucker: "🖨️",
-  Produktionsauftrag: "📋", Fertigungsdaten: "📈", DPP: "📄",
-};
-
 // Simple force-free layout: entities sit on concentric rings around the focus
 // node, so the structure reads at a glance without any external library.
-const NODE_COLOR = {
-  Unternehmen: "#00566e", Bauteil: "#1c6b34", Drucker: "#8a6410",
-  Produktionsauftrag: "#33475b", Fertigungsdaten: "#6b3fa0", DPP: "#a12727",
-};
-
+// Icons/colours come from the same TYPE_META used in the search results, so
+// an entity looks the same whether you meet it in a hit list or in the graph.
 function renderGraphSvg(g, focusId) {
   const W = 660, H = 340, cx = W / 2, cy = H / 2;
   const nodes = g.nodes.slice();
@@ -603,12 +676,13 @@ function renderGraphSvg(g, focusId) {
   const circles = nodes.map((n) => {
     const p = pos[n.id];
     const isFocus = n.id === focus.id;
-    const col = NODE_COLOR[n.type] || "#33475b";
+    const meta = typeMeta(n.type);
+    const col = meta.fg;
     const hidden = (n.withheld || []).length;
     return `<g class="kg-node" data-node="${esc(n.id)}">
         <circle cx="${p.x}" cy="${p.y}" r="${isFocus ? 26 : 21}" fill="${col}"
                 stroke="${isFocus ? "#111" : "#fff"}" stroke-width="${isFocus ? 3 : 2}"/>
-        <text x="${p.x}" y="${p.y + 5}" text-anchor="middle" class="kg-ico">${NODE_ICON[n.type] || "•"}</text>
+        <text x="${p.x}" y="${p.y + 5}" text-anchor="middle" class="kg-ico">${meta.icon}</text>
         <text x="${p.x}" y="${p.y + (isFocus ? 42 : 37)}" text-anchor="middle" class="kg-lbl">${esc(label(n))}</text>
         <text x="${p.x}" y="${p.y + (isFocus ? 54 : 49)}" text-anchor="middle" class="kg-sub">${esc(n.type)}${
           hidden ? ` · 🔒${hidden}` : ""}</text>
@@ -675,12 +749,14 @@ async function showKg(hit) {
         .join("");
       const wh = n.withheld.length
         ? `<div class="muted small">🔒 verborgen: ${n.withheld.map(esc).join(", ")}</div>` : "";
+      const meta = typeMeta(n.type);
       const div = document.createElement("div");
       div.className = "dataset" + (n.id === hit.nodeId ? " focus" : "");
       div.id = "kgcard-" + cssId(n.id);
+      div.style.borderLeft = `4px solid ${meta.fg}`;
       div.innerHTML = `
         <div class="dataset-head">
-          <strong>${NODE_ICON[n.type] || "•"} ${esc(n.type)}</strong>
+          <span class="type-pill" style="--chip-fg:${meta.fg};--chip-bg:${meta.bg}">${meta.icon} ${esc(meta.label)}</span>
           <code class="muted small">${esc(n.id)}</code>
         </div>
         ${rows ? `<table class="kv small">${rows}</table>` : ""}
