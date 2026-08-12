@@ -74,15 +74,18 @@
       <section id="tab-search" class="tab-panel hidden">
         <div class="panel">
           <h2>Semantische Suche über den Dataspace</h2>
-          <p class="muted small">Sucht über die freigegebenen Stammdaten (Materialkurztext,
-            Werkstoff, Abmaße) aller Teilnehmer. Ergebnisse und Detailtiefe richten sich
-            nach Ihrem Level (Beziehung × Position).</p>
+          <p class="muted small">Die <strong>Suche</strong> arbeitet auf Freitext —
+            Einsatzzweck, Funktion, Anforderungen, Bezeichnung, Synonyme
+            („wofür ist das Teil?"). Strukturierte Eigenschaften wie Werkstoff,
+            Abmaße oder Drucker grenzen Sie über die <strong>Filter</strong> ein.
+            Sichtbarkeit und Detailtiefe richten sich nach Ihrem Level.</p>
           <form id="search-form" class="inline-form">
-            <input type="text" id="search-q" placeholder="z.B. edelstahl halterung klein, ~20mm" required>
+            <input type="text" id="search-q" placeholder="z.B. abdeckung für schaltschrank, uv-beständig" required>
             <button type="submit" id="search-btn">Suchen</button>
             <button type="button" id="reindex-btn" class="ghost-dark" title="Eigene Assets neu indexieren">Reindex</button>
           </form>
           <div id="search-msg" class="hidden"></div>
+          <div id="facet-bar" class="facet-bar hidden"></div>
           <div id="search-filter" class="search-filter hidden"></div>
           <div id="search-results"></div>
         </div>

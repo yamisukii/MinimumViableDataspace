@@ -32,12 +32,14 @@ INDEX_FILE = ROOT / "index.json"
 KG_FILE = ROOT / "kg.json"
 MODEL_NAME = "minishlab/potion-base-8M"
 
-# attribute -> tier / label, flattened across all KG entities
-ATTR_TIER, ATTR_LABEL = {}, {}
+# attribute -> tier / label / facet, flattened across all KG entities
+ATTR_TIER, ATTR_LABEL, ATTR_FACET = {}, {}, {}
 for _ent, _spec in SCHEMA["entities"].items():
     for _a, _m in _spec["attributes"].items():
         ATTR_TIER[_a] = _m["tier"]
         ATTR_LABEL[_a] = _m.get("label", _a)
+        if _m.get("facet"):
+            ATTR_FACET[_a] = _m["facet"]
 # legacy portal-uploaded assets use these attribute names
 ATTR_TIER.setdefault("partName", 1)
 ATTR_TIER.setdefault("materialkurztext", 1)
@@ -46,6 +48,9 @@ ATTR_TIER.setdefault("verfahren", 2)
 ATTR_LABEL.setdefault("verfahren", "Verfahren/Prozess")
 ATTR_LABEL.setdefault("abmasse", "Abmaße")
 ATTR_LABEL.setdefault("partName", "Bauteil")
+ATTR_FACET.setdefault("werkstoff", "werkstoff")
+
+FACETS = SCHEMA.get("facets", {})
 
 print("Loading embedding model (offline after first download)...")
 MODEL = StaticModel.from_pretrained(MODEL_NAME)
@@ -137,6 +142,46 @@ def node_tier(node):
     return min(tiers) if tiers else 1
 
 
+# A Material has no printer of its own — the link runs Material <-fuer-
+# Druckprofil -laeuft_auf-> Drucker. Without propagation a "printer" filter
+# would never match a part, which is what people actually want to filter by
+# ("which parts can this machine make?"). So selected facets are pulled in
+# from neighbours up to two hops away.
+PROPAGATE_INTO = {"Material"}
+PROPAGATE_FACETS = {"drucker", "druckerModell", "standort"}
+
+
+def propagate_facets(nodes, edges):
+    """Copy printer-related facet values onto the parts they belong to."""
+    neighbours = {}
+    for e in edges:
+        neighbours.setdefault(e["from"], set()).add(e["to"])
+        neighbours.setdefault(e["to"], set()).add(e["from"])
+
+    for nid, n in nodes.items():
+        if n["type"] not in PROPAGATE_INTO:
+            continue
+        reach, frontier = set(), {nid}
+        for _ in range(2):                      # two hops: part -> profile -> printer
+            nxt = set()
+            for cur in frontier:
+                nxt |= neighbours.get(cur, set())
+            nxt -= reach | {nid}
+            reach |= nxt
+            frontier = nxt
+        gathered = {}
+        for other in reach:
+            src = nodes.get(other)
+            if not src:
+                continue
+            for key, val in (src.get("attrs") or {}).items():
+                facet = ATTR_FACET.get(key)
+                if facet in PROPAGATE_FACETS and val not in (None, ""):
+                    gathered.setdefault(facet, set()).add(val)
+        for facet, vals in gathered.items():
+            n.setdefault("derivedFacets", {})[facet] = sorted(vals)
+
+
 def kg_publish(graph):
     owner = graph["owner"]
     nodes = {}
@@ -148,6 +193,7 @@ def kg_publish(graph):
             entry["text"] = text
             entry["vector"] = embed(text)
         nodes[n["id"]] = entry
+    propagate_facets(nodes, graph.get("edges", []))
     with _lock:
         KG[owner] = {
             "owner": owner,
@@ -211,6 +257,83 @@ def kg_graph(owner, cap, focus=None, depth=1):
             "hiddenNodes": hidden}
 
 
+# ------------------------------------------------------------------- facets
+#
+# Two orthogonal retrieval mechanisms, deliberately kept apart:
+#   * the vector search answers "what is it for" over free text
+#   * facets answer "which properties" over structured values
+# A hit exposes its facet values so the caller can filter and so the UI can
+# offer only the values actually present in the result set.
+
+def facet_values(attrs):
+    """Extract {facetName: value} from a node's attributes (schema-driven)."""
+    out = {}
+    for key, val in (attrs or {}).items():
+        facet = ATTR_FACET.get(key)
+        if not facet or val in (None, ""):
+            continue
+        out[facet] = val
+    return out
+
+
+def matches_filters(fvals, filters):
+    """filters = {facet: [values]} for categorical, {facet: {"min":..,"max":..}}
+    for ranges. A facet value may itself be a list (propagated ones are), in
+    which case any overlap counts as a match."""
+    for facet, cond in (filters or {}).items():
+        val = fvals.get(facet)
+        if isinstance(cond, dict) and ("min" in cond or "max" in cond):
+            nums = val if isinstance(val, list) else [val]
+            ok = False
+            for v in nums:
+                try:
+                    num = float(v)
+                except (TypeError, ValueError):
+                    continue
+                if cond.get("min") is not None and num < float(cond["min"]):
+                    continue
+                if cond.get("max") is not None and num > float(cond["max"]):
+                    continue
+                ok = True
+                break
+            if not ok:
+                return False
+        else:
+            wanted = cond if isinstance(cond, list) else [cond]
+            if not wanted:
+                continue
+            have = [str(v) for v in (val if isinstance(val, list) else [val])]
+            if not set(have) & {str(w) for w in wanted}:
+                return False
+    return True
+
+
+def collect_facets(hits):
+    """Available facet values across hits — categorical get counts, numeric get
+    min/max, so the UI can render chips resp. range inputs."""
+    out = {}
+    for h in hits:
+        for facet, val in (h.get("facets") or {}).items():
+            spec = FACETS.get(facet, {})
+            entry = out.setdefault(facet, {
+                "label": spec.get("label", facet),
+                "kind": spec.get("kind", "categorical"),
+                "unit": spec.get("unit"),
+            })
+            for v in (val if isinstance(val, list) else [val]):
+                if entry["kind"] == "range":
+                    try:
+                        num = float(v)
+                    except (TypeError, ValueError):
+                        continue
+                    entry["min"] = num if entry.get("min") is None else min(entry["min"], num)
+                    entry["max"] = num if entry.get("max") is None else max(entry["max"], num)
+                else:
+                    vals = entry.setdefault("values", {})
+                    vals[str(v)] = vals.get(str(v), 0) + 1
+    return out
+
+
 def kg_search(query_vec, allow, limit=20):
     hits = []
     with _lock:
@@ -225,21 +348,30 @@ def kg_search(query_vec, allow, limit=20):
             f = filter_node(n, cap)
             # a KG node is retrievable when the owner published a matching EDC asset
             edc_asset = n.get("attrs", {}).get("edcAssetId")
+            # only facets the viewer may actually see, plus the ones inherited
+            # from neighbours (e.g. which printers can make this part)
+            facets = facet_values({k: v["value"] for k, v in f["attributes"].items()})
+            facets.update(n.get("derivedFacets") or {})
             hits.append({
                 "kind": "kg", "owner": owner, "nodeId": n["id"], "nodeType": n["type"],
                 "assetId": edc_asset or n["id"], "edcAssetId": edc_asset,
                 "score": round(cosine(query_vec, n["vector"]), 4),
                 "attributes": f["attributes"], "withheld": f["withheld"],
+                "facets": facets,
                 "retrievable": bool(edc_asset),
             })
     hits.sort(key=lambda h: h["score"], reverse=True)
     return hits[:limit]
 
 
-def search(query, allow, limit=20):
+def search(query, allow, limit=20, filters=None, min_score=0.0):
     """allow = {owner: maxTier}. Searches both the EDC asset index and the KG,
     returning hits from allowed owners with attributes filtered to that owner's
-    tier cap. Matching is over the T1 searchable text."""
+    tier cap. Matching is over the searchable free-text attributes; `filters`
+    narrows the result by facet (structured properties).
+
+    Returns (hits, facets) — facets describe what is available *before* the
+    filters are applied, so the UI can still offer the other options."""
     qv = embed(query)
     hits = []
     with _lock:
@@ -260,11 +392,18 @@ def search(query, allow, limit=20):
             "owner": e["owner"], "assetId": e["assetId"], "did": e["did"],
             "fileTier": e["fileTier"], "score": round(score, 4),
             "attributes": visible_attrs, "withheld": withheld,
+            "facets": facet_values({k: v["value"] for k, v in visible_attrs.items()}),
             "retrievable": e["fileTier"] <= cap,
         })
-    hits.extend(kg_search(qv, allow, limit))
+    hits.extend(kg_search(qv, allow, limit=10 ** 6))
     hits.sort(key=lambda h: h["score"], reverse=True)
-    return hits[:limit]
+
+    facets = collect_facets(hits)
+    if min_score:
+        hits = [h for h in hits if h["score"] >= min_score]
+    if filters:
+        hits = [h for h in hits if matches_filters(h.get("facets"), filters)]
+    return hits[:limit], facets
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -322,7 +461,10 @@ class Handler(BaseHTTPRequestHandler):
                 query = body.get("query") or ""
                 allow = {k: int(v) for k, v in (body.get("allow") or {}).items()}
                 limit = int(body.get("limit") or 20)
-                self._json(200, {"query": query, "hits": search(query, allow, limit)})
+                hits, facets = search(query, allow, limit,
+                                      filters=body.get("filters"),
+                                      min_score=float(body.get("minScore") or 0))
+                self._json(200, {"query": query, "hits": hits, "facets": facets})
             elif path == "/kg/publish":
                 if not body.get("owner"):
                     self._json(400, {"error": "owner erforderlich"})

@@ -1,0 +1,54 @@
+{
+  "$comment": [
+    "Semantische Anreicherung der Materialien für die Vektorsuche.",
+    "Diese Felder stehen NICHT in AM2Scale_Mini_Datensatz_erweitert.xlsx — sie sind der Teil,",
+    "der eine semantische Suche überhaupt sinnvoll macht: Freitext, der beschreibt WOFÜR ein Teil",
+    "ist, nicht nur WIE es heißt. Strukturierte Eigenschaften (Werkstoff, Abmaße, Drucker) laufen",
+    "bewusst über Filter, nicht über die Vektorsuche.",
+    "",
+    "Die Inhalte unten sind PLATZHALTER für die Demo (aus Bauteilnamen und Werkstoff abgeleitet),",
+    "keine echten Angaben aus dem Datensatz. Bitte durch reale Beschreibungen ersetzen — je länger",
+    "und natürlicher der Text, desto besser trifft die semantische Suche.",
+    "",
+    "Alternativ kann ein Tabellenblatt 'Semantik' mit den gleichen Spalten in die Excel aufgenommen",
+    "werden; der Importer bevorzugt dann das Sheet."
+  ],
+  "$fields": {
+    "einsatzzweck":  "Wofür wird das Teil eingesetzt? (Kontext, Anwendung, Umgebung)",
+    "funktion":      "Was tut das Teil technisch? (Funktion, Wirkprinzip)",
+    "anforderungen": "Welche Eigenschaften muss es erfüllen? (Beständigkeit, Temperatur, Zulassung)",
+    "branche":       "Branche / Domäne (auch als Filter nutzbar)",
+    "synonyme":      "Alternative Bezeichnungen, unter denen jemand suchen würde"
+  },
+
+  "materials": {
+    "123456789": {
+      "einsatzzweck": "Werbe- und Repräsentationsartikel für Messen und Veranstaltungen, Aufstellung in Innenräumen",
+      "funktion": "Dekoratives Standobjekt in Pokalform, freistehend auf ebener Fläche",
+      "anforderungen": "formstabil bei Raumtemperatur, schlagzäh, oberflächenbehandelbar (lackierbar)",
+      "branche": "Marketing / Veranstaltungstechnik",
+      "synonyme": "Pokal, Trophäe, Cup, Siegerpokal, Auszeichnung"
+    },
+    "987654321": {
+      "einsatzzweck": "Schlüsselanhänger als Werbemittel und Giveaway, Nutzung im Alltag am Schlüsselbund",
+      "funktion": "Trägt einen Schlüsselring, dient als Kennzeichnung und Blickfang",
+      "anforderungen": "abriebfest, bruchsicher bei Sturz, kleine Bauform, leicht",
+      "branche": "Marketing / Werbemittel",
+      "synonyme": "Keychain, Anhänger, Schlüsselband, Ente, Duck"
+    },
+    "555111222": {
+      "einsatzzweck": "Montageadapter zur Befestigung von Geräten auf abweichenden Lochbildern, Einsatz im Schaltschrank und an Montageplatten",
+      "funktion": "Überbrückt unterschiedliche Bohrbilder, nimmt Schraubverbindungen auf und verteilt die Last flächig",
+      "anforderungen": "maßhaltig, formstabil unter Schraubvorspannung, elektrisch isolierend",
+      "branche": "Elektrotechnik / Maschinenbau",
+      "synonyme": "Adapterplatte, Montageplatte, Zwischenplatte, Befestigungsadapter, Lochbildadapter"
+    },
+    "555111333": {
+      "einsatzzweck": "Abdeckung für Kleingehäuse in Elektroinstallationen, Schutz von Klemmen und Platinen vor Staub und Berührung",
+      "funktion": "Verschließt das Gehäuse formschlüssig, schützt Innenleben, ermöglicht Zugang bei Wartung",
+      "anforderungen": "schlagzäh, temperaturbeständig, chemikalienbeständig, gute Maßhaltigkeit für Passung",
+      "branche": "Elektrotechnik / Gehäusebau",
+      "synonyme": "Gehäusedeckel, Abdeckung, Deckel, Gehäuseabdeckung, Schutzdeckel"
+    }
+  }
+}

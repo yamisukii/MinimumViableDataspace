@@ -672,7 +672,13 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         if not length:
             return {}
-        return json.loads(self.rfile.read(length).decode("utf-8"))
+        raw = self.rfile.read(length)
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            # tolerate latin-1 clients (curl from a cp1252 shell) instead of 500ing
+            text = raw.decode("latin-1")
+        return json.loads(text)
 
     def require_session(self):
         _, sess = get_session(self)
@@ -989,8 +995,11 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(400, {"error": "Suchbegriff fehlt"})
                     return
                 allow = build_allow_map(sess["company"], sess.get("level"))
-                res = discovery_call("POST", "/search",
-                                     {"query": query, "allow": allow, "limit": 25})
+                res = discovery_call("POST", "/search", {
+                    "query": query, "allow": allow, "limit": 40,
+                    "filters": b.get("filters") or {},
+                    "minScore": b.get("minScore") or 0,
+                })
                 names = {c["name"]: c["displayName"] for c in registry()}
                 for h in res.get("hits", []):
                     h["ownerDisplay"] = names.get(h["owner"], h["owner"])

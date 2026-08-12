@@ -1,20 +1,27 @@
-"""Build the dataspace knowledge graph from data/AM_Dataset.xlsx.
+"""Build the dataspace knowledge graph from the AM2Scale workbook.
 
-Reads the Excel workbook, maps every sheet onto the canonical KG entities
-defined in kg-schema.json, and publishes the resulting node/edge graph to the
-discovery service — where it becomes searchable (T1 attributes) and queryable
-attribute-by-attribute under the caller's access level.
+Reads data/AM2Scale_Mini_Datensatz_erweitert.xlsx, maps every sheet onto the
+canonical KG entities from kg-schema.json, and publishes one subgraph per
+dataspace participant to the discovery service — where the free-text fields
+become semantically searchable and the structured ones become filters.
 
-The workbook holds one production case (one part, one printer, one order, one
-DPP, an MTConnect time series) plus four companies. Each dataspace participant
-is imported as its own subgraph: pass which dataset company (U_ID) it plays.
+Who owns what follows the workbook: printers (and everything produced on them)
+belong to the company in Unternehmens_ID; the ERP materials carry no owner in
+the data, so they are distributed across the participants for the demo
+(--material-owner pins them to a single company instead).
 
-    python import_dataset.py --company huber-ag --uid U1
-    python import_dataset.py --all              # map all four companies round-robin
-    python import_dataset.py --company huber-ag --uid U1 --dry-run --out graph.json
+Materials are additionally enriched from data/material-semantik.json (or a
+"Semantik" sheet in the workbook, which takes precedence) — Einsatzzweck,
+Funktion, Anforderungen, Branche, Synonyme. Without that free text a semantic
+search over part master data has very little to work with.
+
+    python import_dataset.py --all
+    python import_dataset.py --all --dry-run --out graph.json
+    python import_dataset.py --all --material-owner huber-ag
 """
 import argparse
 import json
+import re
 import statistics
 import sys
 import urllib.error
@@ -26,23 +33,31 @@ import openpyxl
 
 ROOT = Path(__file__).parent
 REPO = ROOT.parent.parent
-DATASET = REPO / "data" / "AM_Dataset.xlsx"
+DATASET = REPO / "data" / "AM2Scale_Mini_Datensatz_erweitert.xlsx"
+SEMANTIK = REPO / "data" / "material-semantik.json"
 SCHEMA = json.loads((ROOT / "kg-schema.json").read_text(encoding="utf-8"))
 DISCOVERY_URL = "http://127.0.0.1:5185"
+TRAEFIK = "http://127.0.0.1:80"
+API_KEY = "password"
+COMPANIES_DIR = REPO / "compose" / "companies"
 
-# dataset company -> dataspace participant (default demo mapping)
+# dataspace participant -> dataset company (U_ID) it plays
 DEFAULT_MAPPING = {
-    "U1": "huber-ag",
-    "U2": "provider",
-    "U3": "consumer",
-    "U4": "rheinmetall",
+    "huber-ag":    "U6",   # Fraunhofer Austria Wien — 3 Drucker
+    "rheinmetall": "U7",   # Fraunhofer Austria Graz — 1 Drucker
+    "provider":    "U1",   # ÖBB Wien
+    "consumer":    "U2",   # WienerLinien
 }
+
+SEMANTIC_FIELDS = ("einsatzzweck", "funktion", "anforderungen", "branche", "synonyme")
 
 
 # --------------------------------------------------------------- excel utils
 
 def sheet_dicts(wb, name):
     """Rows of a sheet as dicts keyed by header, skipping fully empty rows."""
+    if name not in wb.sheetnames:
+        return []
     ws = wb[name]
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
@@ -57,7 +72,6 @@ def sheet_dicts(wb, name):
 
 
 def clean(v):
-    """Normalise a cell value for JSON output."""
     if v is None:
         return None
     if isinstance(v, (datetime, date)):
@@ -84,154 +98,269 @@ def map_attrs(entity_name, row):
     return attrs
 
 
+def load_semantics(wb):
+    """Semantic enrichment per material number: workbook sheet wins over file."""
+    sem = {}
+    if SEMANTIK.exists():
+        try:
+            data = json.loads(SEMANTIK.read_text(encoding="utf-8"))
+            for matnr, fields in (data.get("materials") or {}).items():
+                sem[str(matnr).strip()] = {k: v for k, v in fields.items()
+                                           if k in SEMANTIC_FIELDS and v}
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"  ! material-semantik.json nicht lesbar ({e})")
+    for row in sheet_dicts(wb, "Semantik"):
+        matnr = str(row.get("Materialnummer") or row.get("Material") or "").strip()
+        if not matnr:
+            continue
+        entry = sem.setdefault(matnr, {})
+        for f in SEMANTIC_FIELDS:
+            for key in (f, f.capitalize()):
+                if row.get(key):
+                    entry[f] = clean(row[key])
+    return sem
+
+
 # ------------------------------------------------------------- graph builder
 
 def node(node_id, ntype, attrs):
     return {"id": node_id, "type": ntype, "attrs": attrs}
 
 
-def aggregate_machine_data(wb, print_id, include_metrics=False):
-    """Condense the MTConnect time series into one Fertigungsdaten node.
-    Raw rows stay with the owner; the graph only carries counts/period (T2)
-    and, optionally, numeric process indicators (T3).
-
-    NOTE: in the current workbook the Maschinendaten values are shifted against
-    their column headers (e.g. the printer serial 'D12288' sits under
-    'doorLockState' instead of 'printerSerial') — most likely because the log
-    timestamp was split into a date and a time column on export. Channel-level
-    metrics would therefore be attributed to the wrong signal, so they are
-    omitted unless --include-metrics is passed explicitly."""
-    rows = sheet_dicts(wb, "Maschinendaten")
-    rows = [r for r in rows if str(r.get("Print_ID") or "").strip() == print_id]
-    if not rows:
+def minutes_between(a, b):
+    try:
+        return round((datetime.fromisoformat(str(b)) - datetime.fromisoformat(str(a))).total_seconds() / 60, 1)
+    except (ValueError, TypeError):
         return None
-    stamps = sorted(str(clean(r.get("_timestamp_log"))) for r in rows if r.get("_timestamp_log"))
-    attrs = {
-        "chargeId": f"CHG-{print_id}",
-        "printId": print_id,
-        "messwerte": len(rows),
-        "zeitraumVon": stamps[0] if stamps else None,
-        "zeitraumBis": stamps[-1] if stamps else None,
-        "rohdatenRef": f"maschinendaten://{print_id}",
-    }
-    if include_metrics:
-        channels = ["oven1CurrentAct", "s1TAct", "m1TAct", "z1Act", "curLayer", "elaTime"]
-        kennzahlen = {}
-        for ch in channels:
-            vals = [float(r[ch]) for r in rows if isinstance(r.get(ch), (int, float))]
-            if len(vals) >= 3:
-                kennzahlen[ch] = {"min": round(min(vals), 3), "max": round(max(vals), 3),
-                                  "avg": round(statistics.fmean(vals), 3)}
-        if kennzahlen:
-            attrs["kennzahlen"] = kennzahlen
-            attrs["$warnung"] = ("Spaltenzuordnung im Dataset verschoben — "
-                                 "Kennzahlen sind ungeprüft dem Signal zugeordnet")
-    return node(f"charge:{print_id}", "Fertigungsdaten", {k: v for k, v in attrs.items() if v is not None})
 
 
-def build_graph(wb, company, uid, include_metrics=False, with_case=True):
-    """Build one participant's subgraph, playing dataset company `uid`.
+def aggregate_machine_data(wb, printer_serial, include_metrics=False):
+    """Condense the MTConnect series of one printer into per-job nodes."""
+    rows = [r for r in sheet_dicts(wb, "Maschinenzeitreihendaten")
+            if str(r.get("printerSerial") or "").strip() == printer_serial]
+    if not rows:
+        return []
+    by_job = {}
+    for r in rows:
+        by_job.setdefault(str(r.get("pathProgram") or "unbekannt").strip(), []).append(r)
 
-    `with_case=False` yields only the company node — for participants that take
-    part in the dataspace but do not own the workbook's single production case.
-    (The workbook holds exactly one part/printer/order/DPP, so handing that same
-    case to every participant would show the identical part four times.)"""
-    nodes, edges = [], []
+    out = []
+    for job, jrows in by_job.items():
+        stamps = sorted(str(clean(r.get("_timestamp_log"))) for r in jrows if r.get("_timestamp_log"))
+        attrs = {
+            "serieId": f"{printer_serial}:{job}",
+            "printerId": printer_serial,
+            "jobProgramm": job,
+            "messwerte": len(jrows),
+            "zeitraumVon": stamps[0] if stamps else None,
+            "zeitraumBis": stamps[-1] if stamps else None,
+            "rohdatenRef": f"maschinendaten://{printer_serial}/{job}",
+        }
+        if include_metrics:
+            kennzahlen = {}
+            for ch in ("m1TAct", "oven1CurrentAct", "z1Act", "curLayer"):
+                vals = [float(r[ch]) for r in jrows if isinstance(r.get(ch), (int, float))]
+                if len(vals) >= 3:
+                    kennzahlen[ch] = {"min": round(min(vals), 3), "max": round(max(vals), 3),
+                                      "avg": round(statistics.fmean(vals), 3)}
+            if kennzahlen:
+                attrs["kennzahlen"] = kennzahlen
+        out.append(node(f"serie:{printer_serial}:{job}", "Maschinendaten",
+                        {k: v for k, v in attrs.items() if v is not None}))
+    return out
 
-    def edge(a, rel, b):
-        edges.append({"from": a, "rel": rel, "to": b})
 
-    # --- Unternehmen -------------------------------------------------------
+def build_graphs(wb, mapping, material_owner=None, include_metrics=False):
+    """Build every participant's subgraph in one pass, so cross-references
+    (printer -> company, material -> orders) stay consistent."""
+    semantics = load_semantics(wb)
+
     firms = {str(r.get("U_ID")).strip(): r for r in sheet_dicts(wb, "Unternehmensdaten")}
-    firm_row = firms.get(uid)
-    if not firm_row:
-        raise SystemExit(f"U_ID '{uid}' nicht im Dataset (vorhanden: {sorted(firms)})")
-    firm_id = f"unternehmen:{uid}"
-    nodes.append(node(firm_id, "Unternehmen", map_attrs("Unternehmen", firm_row)))
+    uid_to_company = {uid: comp for comp, uid in mapping.items()}
 
-    if not with_case:
-        return {
+    graphs = {}
+    for company, uid in mapping.items():
+        firm_row = firms.get(uid)
+        if not firm_row:
+            raise SystemExit(f"U_ID '{uid}' nicht im Dataset (vorhanden: {sorted(firms)})")
+        graphs[company] = {
             "owner": company,
             "did": f"did:web:identityhub-{company}%3A7083:{company}",
-            "datasetCompany": {"uId": uid, "name": clean(firm_row.get("Unternehmensname"))},
-            "nodes": nodes,
-            "edges": edges,
+            "datasetCompany": {"uId": uid, "name": clean(firm_row.get("Unternehmensname")),
+                               "stadt": clean(firm_row.get("Stadt"))},
+            "nodes": [node(f"unternehmen:{uid}", "Unternehmen", map_attrs("Unternehmen", firm_row))],
+            "edges": [],
         }
 
-    # --- Drucker -----------------------------------------------------------
-    printer_ids = []
+    def add(company, n):
+        graphs[company]["nodes"].append(n)
+
+    def link(company, a, rel, b):
+        graphs[company]["edges"].append({"from": a, "rel": rel, "to": b})
+
+    # --- Drucker: owned by the company in Unternehmens_ID -------------------
+    printer_owner, printer_serial, printer_model = {}, {}, {}
     for r in sheet_dicts(wb, "Druckerdaten"):
-        pid = str(r.get("Print_ID") or "").strip()
+        pid = str(r.get("PrinterID") or "").strip()
         if not pid:
             continue
-        nid = f"drucker:{pid}"
-        nodes.append(node(nid, "Drucker", map_attrs("Drucker", r)))
-        edge(firm_id, "betreibt", nid)
-        printer_ids.append(pid)
+        printer_model[pid] = str(r.get("Printer_Model") or "").strip()
+        owner = uid_to_company.get(str(r.get("Unternehmens_ID") or "").strip())
+        if not owner:
+            continue  # printer of a company that is not a dataspace participant
+        printer_owner[pid] = owner
+        printer_serial[pid] = str(r.get("Seriennummer") or "").strip()
+        add(owner, node(f"drucker:{pid}", "Drucker", map_attrs("Drucker", r)))
+        link(owner, f"unternehmen:{DEFAULT_MAPPING.get(owner, mapping[owner])}", "betreibt", f"drucker:{pid}")
 
-    # --- Bauteile (ERP) ----------------------------------------------------
-    parts = {}
-    for r in sheet_dicts(wb, "ERP"):
+    # --- Material: no owner in the data -> distribute (or pin) --------------
+    materials = sheet_dicts(wb, "ERP")
+    participants = list(mapping.keys())
+    material_owner_of = {}
+    for i, r in enumerate(materials):
         matnr = str(r.get("Material") or "").strip()
         if not matnr:
             continue
-        nid = f"bauteil:{matnr}"
-        nodes.append(node(nid, "Bauteil", map_attrs("Bauteil", r)))
-        edge(firm_id, "fertigt", nid)
-        parts[matnr] = nid
+        owner = material_owner or participants[i % len(participants)]
+        material_owner_of[matnr] = owner
+        attrs = map_attrs("Material", r)
+        attrs.update(semantics.get(matnr, {}))
+        add(owner, node(f"material:{matnr}", "Material", attrs))
+        link(owner, f"unternehmen:{mapping[owner]}", "fuehrt", f"material:{matnr}")
 
-    # --- Produktionsaufträge ----------------------------------------------
-    for r in sheet_dicts(wb, "Produktionssteuerung"):
-        oid = str(r.get("ID") or "").strip()
-        if not oid:
+    def owner_of_material(matnr):
+        return material_owner_of.get(str(matnr).strip())
+
+    # --- Druckprofil: lives with the material's owner ------------------------
+    # A print profile is knowledge about the part ("this can be made on a
+    # Prusa MK4S"), so it belongs to whoever offers the part — even when the
+    # machine itself is operated by someone else. The printer model is carried
+    # along so the filter works across company boundaries; the edge to the
+    # actual printer node is only drawn when both are in the same subgraph.
+    for r in sheet_dicts(wb, "Bauteildruckdaten"):
+        pid = str(r.get("PrinterID") or "").strip()
+        matnr = str(r.get("Materialnummer") or "").strip()
+        owner = owner_of_material(matnr)
+        if not owner:
             continue
-        nid = f"auftrag:{oid}"
-        nodes.append(node(nid, "Produktionsauftrag", map_attrs("Produktionsauftrag", r)))
+        attrs = map_attrs("Druckprofil", r)
+        attrs["profilId"] = f"{matnr}_{pid}"
+        if pid in printer_model:
+            attrs["druckerModell"] = printer_model[pid]
+        nid = f"profil:{attrs['profilId']}"
+        add(owner, node(nid, "Druckprofil", attrs))
+        link(owner, nid, "fuer", f"material:{matnr}")
+        if printer_owner.get(pid) == owner:
+            link(owner, nid, "laeuft_auf", f"drucker:{pid}")
+
+    # --- Auftragsposition: with the material owner (they order it) ----------
+    for r in sheet_dicts(wb, "Auftragsdaten"):
         matnr = str(r.get("Materialnummer") or "").strip()
-        if matnr in parts:
-            edge(nid, "fuer", parts[matnr])
-        for pid in printer_ids:
-            edge(nid, "laeuft_auf", f"drucker:{pid}")
+        owner = owner_of_material(matnr)
+        if not owner:
+            continue
+        attrs = map_attrs("Auftragsposition", r)
+        attrs["positionId"] = f"{attrs.get('auftragsnummer')}-{attrs.get('position')}"
+        nid = f"position:{attrs['positionId']}"
+        add(owner, node(nid, "Auftragsposition", attrs))
+        link(owner, nid, "bestellt", f"material:{matnr}")
 
-    # --- Fertigungsdaten (aggregierte Maschinendaten) ----------------------
-    charge_ids = []
-    for pid in printer_ids:
-        agg = aggregate_machine_data(wb, pid, include_metrics)
-        if agg:
-            nodes.append(agg)
-            edge(f"drucker:{pid}", "liefert", agg["id"])
-            charge_ids.append(agg["id"])
-            for n in nodes:
-                if n["type"] == "Produktionsauftrag":
-                    edge(n["id"], "erzeugt", agg["id"])
+    # --- Fertigungsauftrag: with the printer's owner ------------------------
+    charge_owner, charge_of_fa = {}, {}
+    for r in sheet_dicts(wb, "Fertigungsauftragsdaten"):
+        fa = str(r.get("FertigungsauftragsID") or "").strip()
+        pid = str(r.get("PrinterID") or "").strip()
+        owner = printer_owner.get(pid)
+        if not fa or not owner:
+            continue
+        attrs = map_attrs("Fertigungsauftrag", r)
+        # charge id follows the pattern used in Bauteildatenbank/Qualitätsdaten: A001-F001
+        auf = str(attrs.get("auftragsnummer") or "").replace("-", "")
+        charge = f"{auf}-{fa.replace('-', '')}" if auf else fa
+        attrs["chargenId"] = charge
+        dauer = minutes_between(attrs.get("startzeitpunkt"), attrs.get("endzeitpunkt"))
+        if dauer is not None:
+            attrs["dauerMin"] = dauer
+        nid = f"fertigung:{fa}"
+        add(owner, node(nid, "Fertigungsauftrag", attrs))
+        link(owner, nid, "laeuft_auf", f"drucker:{pid}")
+        charge_owner[charge] = owner
+        charge_of_fa[charge] = nid
+        matnr = str(attrs.get("materialnummer") or "").strip()
+        if owner_of_material(matnr) == owner:
+            link(owner, nid, "fertigt", f"material:{matnr}")
+        pos_id = f"{attrs.get('auftragsnummer')}-{attrs.get('position')}"
+        if any(n["id"] == f"position:{pos_id}" for n in graphs[owner]["nodes"]):
+            link(owner, nid, "erfuellt", f"position:{pos_id}")
 
-    # --- DPP ---------------------------------------------------------------
-    for i, r in enumerate(sheet_dicts(wb, "DPP"), start=1):
-        matnr = str(r.get("Materialnummer") or "").strip()
-        attrs = map_attrs("DPP", r)
-        attrs["dppId"] = f"DPP-{matnr or i}"
-        nid = f"dpp:{attrs['dppId']}"
-        nodes.append(node(nid, "DPP", attrs))
-        if matnr in parts:
-            edge(parts[matnr], "hat_dpp", nid)
-        for cid in charge_ids:
-            edge(nid, "basiert_auf", cid)
+    # --- Bauteil + DPP-Ereignisse -------------------------------------------
+    dpp_by_part = {}
+    for r in sheet_dicts(wb, "Digitaler-Produktpass"):
+        pid = str(r.get("Bauteil-ID") or "").strip()
+        if pid:
+            dpp_by_part.setdefault(pid, []).append({
+                "zeitstempel": clean(r.get("Zeitstempel")),
+                "ereignis": clean(r.get("Ereignis/Änderung")),
+                "bearbeiter": clean(r.get("Bearbeiter")),
+                "version": clean(r.get("Neue DPP-Version")),
+                "status": clean(r.get("Status")),
+            })
 
-    return {
-        "owner": company,
-        "did": f"did:web:identityhub-{company}%3A7083:{company}",
-        "datasetCompany": {"uId": uid, "name": clean(firm_row.get("Unternehmensname"))},
-        "nodes": nodes,
-        "edges": edges,
-    }
+    # Bauteil-IDs are only unique within a charge in this workbook (123456789_B1
+    # appears in several charges), and some rows are duplicated outright — so the
+    # node id combines charge + part id, and exact repeats are collapsed.
+    seen_parts, dup_rows = set(), 0
+    for r in sheet_dicts(wb, "Bauteildatenbank"):
+        bid = str(r.get("Bauteil-ID") or "").strip()
+        charge = str(r.get("ChargenID") or "").strip()
+        owner = charge_owner.get(charge)
+        if not bid or not owner:
+            continue
+        nid = f"bauteil:{charge}:{bid}"
+        if nid in seen_parts:
+            dup_rows += 1
+            continue
+        seen_parts.add(nid)
+        attrs = map_attrs("Bauteil", r)
+        events = dpp_by_part.get(bid, [])
+        if events:
+            attrs["ereignisse"] = events
+            attrs["dppVersion"] = events[-1].get("version")
+            attrs["dppStatus"] = events[-1].get("status")
+        add(owner, node(nid, "Bauteil", attrs))
+        if charge in charge_of_fa:
+            link(owner, charge_of_fa[charge], "erzeugt", nid)
+    if dup_rows:
+        print(f"  i {dup_rows} doppelte Zeilen in 'Bauteildatenbank' übersprungen "
+              f"(gleiche Bauteil-ID in derselben Charge)")
+
+    # --- Qualitätsprüfung ----------------------------------------------------
+    for r in sheet_dicts(wb, "Qualitätsdaten"):
+        charge = str(r.get("Charge") or "").strip()
+        owner = charge_owner.get(charge)
+        if not owner:
+            continue
+        attrs = map_attrs("Qualitaetspruefung", r)
+        attrs["pruefungId"] = f"QS-{charge}"
+        nid = f"qs:{attrs['pruefungId']}"
+        add(owner, node(nid, "Qualitaetspruefung", attrs))
+        if charge in charge_of_fa:
+            link(owner, charge_of_fa[charge], "geprueft_in", nid)
+
+    # --- Maschinenzeitreihen -------------------------------------------------
+    for pid, owner in printer_owner.items():
+        serial = printer_serial.get(pid)
+        if not serial:
+            continue
+        for n in aggregate_machine_data(wb, serial, include_metrics):
+            n["attrs"]["printerId"] = pid
+            add(owner, n)
+            link(owner, f"drucker:{pid}", "liefert", n["id"])
+
+    return graphs
 
 
 # ------------------------------------------------- EDC assets for KG parts
-
-TRAEFIK = "http://127.0.0.1:80"
-API_KEY = "password"
-COMPANIES_DIR = REPO / "compose" / "companies"
-
 
 def mgmt(company, method, path, payload=None, timeout=30):
     body = json.dumps(payload).encode("utf-8") if payload is not None else None
@@ -245,59 +374,55 @@ def mgmt(company, method, path, payload=None, timeout=30):
         return json.loads(raw.decode("utf-8")) if raw else None
 
 
-def create_part_asset(company, part_node):
-    """Publish a Bauteil's master-data sheet as a retrievable EDC asset, so a
-    search hit is not just metadata but something a partner can actually fetch.
-    Returns the asset id, or None if the connector is unreachable."""
-    attrs = part_node["attrs"]
-    matnr = attrs.get("materialnummer") or part_node["id"].split(":")[-1]
+def create_material_asset(company, mat_node):
+    """Publish a material's master-data sheet as a retrievable EDC asset, so a
+    search hit is not just metadata but something a partner can fetch."""
+    attrs = mat_node["attrs"]
+    matnr = attrs.get("materialnummer") or mat_node["id"].split(":")[-1]
     asset_id = f"stammdaten-{matnr}"
     filename = f"{asset_id}.json"
 
-    # T1 master data = what the datasheet contains
-    sheet = {k: v for k, v in attrs.items()
-             if SCHEMA["entities"]["Bauteil"]["attributes"].get(k, {}).get("tier") == 1}
+    spec = SCHEMA["entities"]["Material"]["attributes"]
+    sheet = {k: v for k, v in attrs.items() if spec.get(k, {}).get("tier") == 1}
     store = COMPANIES_DIR / company / "storage" / "assets"
     store.mkdir(parents=True, exist_ok=True)
     (store / filename).write_text(json.dumps(sheet, ensure_ascii=False, indent=1), encoding="utf-8")
 
     properties = {
-        "name": f"Stammdatenblatt {attrs.get('benennung') or matnr}",
-        "description": f"Stammdaten zu {attrs.get('benennung') or matnr} (aus dem KG)",
-        "am2scale:partName": attrs.get("benennung") or attrs.get("kurztext") or matnr,
+        "name": f"Stammdatenblatt {attrs.get('materialkurztext') or matnr}",
+        "description": attrs.get("einsatzzweck") or f"Stammdaten zu {matnr}",
+        "am2scale:partName": attrs.get("materialkurztext") or matnr,
         "am2scale:material": attrs.get("materialkurztext", ""),
         "am2scale:werkstoff": attrs.get("werkstoff", ""),
-        "am2scale:abmasse": attrs.get("abmessung", ""),
-        "am2scale:kgNode": part_node["id"],
+        "am2scale:abmasse": " x ".join(str(attrs[k]) for k in ("laenge", "breite", "hoehe")
+                                       if attrs.get(k) is not None) or "",
+        "am2scale:kgNode": mat_node["id"],
         "am2scale:tier": "1",
         "am2scale:fileName": filename,
         "am2scale:fileFormat": "JSON",
     }
     try:
-        try:
-            mgmt(company, "POST", "/api/mgmt/v4/assets", {
+        for path, payload in (
+            ("/api/mgmt/v4/assets", {
                 "@context": ["https://w3id.org/edc/connector/management/v2"],
                 "@id": asset_id, "@type": "Asset", "properties": properties,
                 "dataAddress": {"@type": "DataAddress", "type": "HttpData",
                                 "baseUrl": f"http://filestore-{company}/{filename}",
-                                "proxyPath": "true", "proxyQueryParams": "true"},
-            })
-        except urllib.error.HTTPError as e:
-            if e.code != 409:
-                raise
-        try:
-            mgmt(company, "POST", "/api/mgmt/v4/contractdefinitions", {
+                                "proxyPath": "true", "proxyQueryParams": "true"}}),
+            ("/api/mgmt/v4/contractdefinitions", {
                 "@context": ["https://w3id.org/edc/connector/management/v2"],
                 "@id": f"{asset_id}-def", "@type": "ContractDefinition",
                 "accessPolicyId": f"{company}-require-membership",
                 "contractPolicyId": f"{company}-require-manufacturer",
                 "assetsSelector": {"@type": "Criterion",
                                    "operandLeft": "https://w3id.org/edc/v0.0.1/ns/id",
-                                   "operator": "=", "operandRight": asset_id},
-            })
-        except urllib.error.HTTPError as e:
-            if e.code != 409:
-                raise
+                                   "operator": "=", "operandRight": asset_id}}),
+        ):
+            try:
+                mgmt(company, "POST", path, payload)
+            except urllib.error.HTTPError as e:
+                if e.code != 409:
+                    raise
         return asset_id
     except (urllib.error.HTTPError, urllib.error.URLError) as e:
         print(f"  ! EDC-Asset für {matnr} nicht angelegt ({e}) — läuft der Stack?")
@@ -311,7 +436,7 @@ def publish(graph):
     req = urllib.request.Request(f"{DISCOVERY_URL}/kg/publish", data=body, method="POST")
     req.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         raise SystemExit(f"Discovery lehnte ab (HTTP {e.code}): {e.read().decode(errors='replace')[:300]}")
@@ -321,59 +446,54 @@ def publish(graph):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Baut den Dataspace-KG aus AM_Dataset.xlsx")
-    ap.add_argument("--company", help="Dataspace-Teilnehmer (z.B. huber-ag)")
-    ap.add_argument("--uid", help="Dataset-Unternehmen, das die Firma spielt (U1..U4)")
-    ap.add_argument("--all", action="store_true",
-                    help="alle vier Firmen laut Standard-Mapping importieren; nur --case-owner "
-                         "erhält den Produktionsfall, die übrigen nur ihren Unternehmensknoten")
-    ap.add_argument("--case-owner", default="huber-ag",
-                    help="welche Firma den Produktionsfall (Bauteil/Drucker/Auftrag/DPP) besitzt "
-                         "(Standard: huber-ag)")
-    ap.add_argument("--no-assets", action="store_true",
-                    help="keine EDC-Assets für die Bauteile anlegen")
-    ap.add_argument("--dry-run", action="store_true", help="nur bauen, nicht publizieren")
-    ap.add_argument("--out", help="Graph zusätzlich als JSON-Datei schreiben")
+    ap = argparse.ArgumentParser(description="Baut den Dataspace-KG aus dem AM2Scale-Datensatz")
+    ap.add_argument("--all", action="store_true", help="alle Teilnehmer laut Standard-Mapping")
+    ap.add_argument("--company", help="nur diesen Teilnehmer publizieren")
+    ap.add_argument("--material-owner", help="alle Materialien dieser Firma zuordnen "
+                                             "(Standard: gleichmäßig verteilt)")
+    ap.add_argument("--no-assets", action="store_true", help="keine EDC-Assets anlegen")
     ap.add_argument("--include-metrics", action="store_true",
-                    help="Maschinendaten-Kennzahlen aufnehmen (ACHTUNG: Spaltenzuordnung im "
-                         "Dataset ist verschoben, Werte sind ungeprüft)")
+                    help="Kennzahlen aus den Maschinenzeitreihen aufnehmen")
+    ap.add_argument("--dry-run", action="store_true", help="nur bauen, nicht publizieren")
+    ap.add_argument("--out", help="Graphen zusätzlich als JSON schreiben")
     args = ap.parse_args()
 
+    if not args.all and not args.company:
+        ap.error("--all oder --company angeben")
     if not DATASET.exists():
         raise SystemExit(f"Dataset nicht gefunden: {DATASET}")
-    if not args.all and not (args.company and args.uid):
-        ap.error("entweder --all oder --company zusammen mit --uid angeben")
 
     print(f"Lade {DATASET.name} ...")
     wb = openpyxl.load_workbook(DATASET, read_only=True, data_only=True)
+    graphs = build_graphs(wb, DEFAULT_MAPPING, args.material_owner, args.include_metrics)
 
-    targets = list(DEFAULT_MAPPING.items()) if args.all else [(args.uid, args.company)]
-    for uid, company in targets:
-        # only one participant owns the workbook's single production case
-        with_case = (company == args.case_owner) if args.all else True
-        graph = build_graph(wb, company, uid, args.include_metrics, with_case)
+    wanted = [args.company] if args.company else list(graphs)
+    for company in wanted:
+        g = graphs.get(company)
+        if not g:
+            raise SystemExit(f"Unbekannter Teilnehmer '{company}' (bekannt: {sorted(graphs)})")
         by_type = {}
-        for n in graph["nodes"]:
+        for n in g["nodes"]:
             by_type[n["type"]] = by_type.get(n["type"], 0) + 1
-        print(f"\n{company}  (spielt {uid} / {graph['datasetCompany']['name']})"
-              + ("" if with_case else "  — nur Unternehmensknoten"))
-        print(f"  Knoten: {len(graph['nodes'])}  {by_type}")
-        print(f"  Kanten: {len(graph['edges'])}")
-        if with_case and not args.no_assets and not args.dry_run:
-            for n in graph["nodes"]:
-                if n["type"] == "Bauteil":
-                    aid = create_part_asset(company, n)
+        ds = g["datasetCompany"]
+        print(f"\n{company}  (spielt {ds['uId']} / {ds['name']}, {ds.get('stadt')})")
+        print(f"  Knoten: {len(g['nodes']):>3}  {by_type}")
+        print(f"  Kanten: {len(g['edges']):>3}")
+
+        if not args.no_assets and not args.dry_run:
+            for n in g["nodes"]:
+                if n["type"] == "Material":
+                    aid = create_material_asset(company, n)
                     if aid:
                         n["attrs"]["edcAssetId"] = aid
-                        print(f"  EDC-Asset: {aid} (beziehbar)")
+                        print(f"  EDC-Asset: {aid}  ({n['attrs'].get('materialkurztext')})")
         if args.out:
-            out = Path(args.out) if len(targets) == 1 else Path(args.out).with_name(
-                f"{Path(args.out).stem}-{company}{Path(args.out).suffix or '.json'}")
-            out.write_text(json.dumps(graph, ensure_ascii=False, indent=1), encoding="utf-8")
+            out = Path(args.out)
+            out = out.with_name(f"{out.stem}-{company}{out.suffix or '.json'}")
+            out.write_text(json.dumps(g, ensure_ascii=False, indent=1), encoding="utf-8")
             print(f"  geschrieben: {out}")
         if not args.dry_run:
-            res = publish(graph)
-            print(f"  publiziert: {res}")
+            print(f"  publiziert: {publish(g)}")
 
     if args.dry_run:
         print("\n(dry-run — nichts publiziert)")

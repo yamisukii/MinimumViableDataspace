@@ -598,23 +598,107 @@ function renderSearchResults() {
   });
 }
 
-$("search-form").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const msg = $("search-msg");
-  msg.className = "hidden";
-  $("search-filter").classList.add("hidden");
+// ---- facets: structured narrowing, complements the free-text search --------
+// The vector search answers "what is it for"; facets answer "which properties".
+// Values come from the server (only those the viewer's level exposes), so the
+// filter bar never offers something that isn't actually reachable.
+let activeFilters = {};      // {facet: [values]} | {facet: {min,max}}
+let lastFacets = {};
+
+function renderFacetBar() {
+  const bar = $("facet-bar");
+  const names = Object.keys(lastFacets);
+  if (!names.length) {
+    bar.classList.add("hidden");
+    bar.innerHTML = "";
+    return;
+  }
+  bar.classList.remove("hidden");
+  const groups = names.map((facet) => {
+    const f = lastFacets[facet];
+    if (f.kind === "range") {
+      if (f.min === undefined || f.max === undefined) return "";
+      const cur = activeFilters[facet] || {};
+      const unit = f.unit ? ` ${esc(f.unit)}` : "";
+      return `<div class="facet-group">
+          <label>${esc(f.label)}${unit}
+            <span class="muted small">(${f.min}–${f.max})</span></label>
+          <div class="facet-range">
+            <input type="number" step="any" data-facet="${esc(facet)}" data-bound="min"
+                   placeholder="min" value="${cur.min ?? ""}">
+            <span class="muted">–</span>
+            <input type="number" step="any" data-facet="${esc(facet)}" data-bound="max"
+                   placeholder="max" value="${cur.max ?? ""}">
+          </div>
+        </div>`;
+    }
+    const chosen = activeFilters[facet] || [];
+    const opts = Object.entries(f.values || {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([val, count]) => {
+        const on = chosen.includes(val);
+        return `<button type="button" class="facet-chip${on ? " active" : ""}"
+                  data-facet="${esc(facet)}" data-value="${esc(val)}">${esc(val)}
+                  <span class="muted">${count}</span></button>`;
+      }).join(" ");
+    if (!opts) return "";
+    return `<div class="facet-group"><label>${esc(f.label)}</label>
+              <div class="facet-chips">${opts}</div></div>`;
+  }).join("");
+
+  const anyActive = Object.keys(activeFilters).length > 0;
+  bar.innerHTML = `<div class="facet-head">
+      <strong class="small">Filter</strong>
+      ${anyActive ? `<button type="button" id="facet-reset" class="linkish small">alle zurücksetzen</button>` : ""}
+    </div>${groups}`;
+
+  bar.querySelectorAll(".facet-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const { facet, value } = btn.dataset;
+      const cur = activeFilters[facet] || [];
+      activeFilters[facet] = cur.includes(value)
+        ? cur.filter((v) => v !== value) : [...cur, value];
+      if (!activeFilters[facet].length) delete activeFilters[facet];
+      runSearch();
+    });
+  });
+  bar.querySelectorAll(".facet-range input").forEach((inp) => {
+    inp.addEventListener("change", () => {
+      const { facet, bound } = inp.dataset;
+      const cur = { ...(activeFilters[facet] || {}) };
+      if (inp.value === "") delete cur[bound]; else cur[bound] = parseFloat(inp.value);
+      if (Object.keys(cur).length) activeFilters[facet] = cur; else delete activeFilters[facet];
+      runSearch();
+    });
+  });
+  const reset = document.getElementById("facet-reset");
+  if (reset) reset.addEventListener("click", () => { activeFilters = {}; runSearch(); });
+}
+
+async function runSearch() {
+  const query = $("search-q").value.trim();
+  if (!query) return;
+  $("search-msg").className = "hidden";
   $("search-results").innerHTML = '<p class="muted">Suche…</p>';
   try {
     const data = await api("/api/search", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: $("search-q").value }),
+      body: JSON.stringify({ query, filters: activeFilters }),
     });
     lastSearchHits = data.hits || [];
+    lastFacets = data.facets || {};
+    renderFacetBar();
     renderSearchFilterBar();
     renderSearchResults();
   } catch (e) {
     $("search-results").innerHTML = `<p class="error">${esc(e.message)}</p>`;
   }
+}
+
+$("search-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  activeFilters = {};        // a new query starts with a clean slate
+  runSearch();
 });
 
 $("reindex-btn").addEventListener("click", async () => {

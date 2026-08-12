@@ -293,3 +293,31 @@ button.ghost-dark { background: #e8eef2; color: var(--text); }
   background: var(--chip-bg, #eef2f4);
   border-color: var(--chip-fg, var(--border));
 }
+
+/* facet bar: structured narrowing (Werkstoff, Drucker, Abmaße, ...) next to
+   the free-text vector search */
+.facet-bar {
+  border: 1px solid var(--border); border-radius: 8px;
+  background: #fbfcfd; padding: 10px 14px; margin: 12px 0;
+  display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-start;
+}
+.facet-head { width: 100%; display: flex; justify-content: space-between; align-items: center; }
+.facet-group { display: flex; flex-direction: column; gap: 5px; }
+.facet-group > label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.facet-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.facet-chip {
+  font-size: 12px; padding: 3px 9px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: #fff; color: var(--text);
+}
+.facet-chip:hover { border-color: var(--accent); }
+.facet-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.facet-chip.active .muted { color: #cfe2ea; }
+.facet-range { display: flex; align-items: center; gap: 5px; }
+.facet-range input {
+  width: 78px; padding: 5px 7px; font-size: 12.5px;
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.linkish {
+  background: none; border: none; color: var(--accent);
+  cursor: pointer; text-decoration: underline; padding: 0;
+}
