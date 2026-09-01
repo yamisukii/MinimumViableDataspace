@@ -1,22 +1,18 @@
-# Ignore Gradle project-specific cache directory
+# Gradle
 .gradle
-
-# Ignore Gradle build output directory
 build
 out/
 
+# IDE
 .idea/
 
-.terraform*
-*terraform.tfstate*
-# company file storage (runtime data)
-compose/companies/*/storage/
-
-# python bytecode
+# Python
 __pycache__/
 *.pyc
 
-# discovery vector index (runtime data)
+# Runtime data: per-company file storage (assets + downloads)
+compose/companies/*/storage/
+
+# Runtime data: discovery vector index and knowledge graph
 ui/discovery/index.json
-ui/discovery/__pycache__/
 ui/discovery/kg.json

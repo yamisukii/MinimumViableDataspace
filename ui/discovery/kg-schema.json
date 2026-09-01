@@ -2,215 +2,676 @@
   "$comment": "Canonical AM2Scale dataspace KG model, derived from data/AM2Scale_Mini_Datensatz_erweitert.xlsx and the AM2Scale data-architecture diagram. Every company abstracts its ERP/printer/production data into these entities. Each attribute carries a sensitivity tier: T1 = discoverable master data, T2 = process/commercial (partners), T3 = drawings, identifiers, raw machine data (subsidiaries only). Two orthogonal retrieval mechanisms: free-text attributes (searchable: true) feed the vector search, structured attributes (facet: ...) feed the filters.",
   "version": "3.0",
   "source": "data/AM2Scale_Mini_Datensatz_erweitert.xlsx",
-
   "entities": {
     "Unternehmen": {
       "label": "Unternehmen",
       "sheet": "Unternehmensdaten",
       "idField": "uId",
       "attributes": {
-        "uId":        { "tier": 1, "label": "Unternehmens-ID",   "from": "U_ID" },
-        "name":       { "tier": 1, "label": "Unternehmensname",  "from": "Unternehmensname" },
-        "stadt":      { "tier": 1, "label": "Stadt",             "from": "Stadt",  "facet": "stadt" },
-        "land":       { "tier": 1, "label": "Land",              "from": "Land" },
-        "strasse":    { "tier": 2, "label": "Straße",            "from": "Straße" },
-        "stromtarif": { "tier": 2, "label": "Stromtarif (€/kWh)", "from": "Stromtarif" },
-        "co2PerKwh":  { "tier": 2, "label": "CO₂ pro kWh",       "from": "CO2_KWh" }
+        "uId": {
+          "tier": 1,
+          "label": "Unternehmens-ID",
+          "from": "U_ID"
+        },
+        "name": {
+          "tier": 1,
+          "label": "Unternehmensname",
+          "from": "Unternehmensname"
+        },
+        "stadt": {
+          "tier": 1,
+          "label": "Stadt",
+          "from": "Stadt",
+          "facet": "stadt"
+        },
+        "land": {
+          "tier": 1,
+          "label": "Land",
+          "from": "Land"
+        },
+        "strasse": {
+          "tier": 2,
+          "label": "Straße",
+          "from": "Straße"
+        },
+        "stromtarif": {
+          "tier": 2,
+          "label": "Stromtarif (€/kWh)",
+          "from": "Stromtarif"
+        },
+        "co2PerKwh": {
+          "tier": 2,
+          "label": "CO₂ pro kWh",
+          "from": "CO2_KWh"
+        }
       }
     },
-
     "Material": {
       "label": "Material / Artikel",
       "$comment": "Article master data — the thing a partner discovers and may want. Carries the free-text fields that drive the semantic search.",
       "sheet": "ERP",
       "idField": "materialnummer",
       "attributes": {
-        "materialnummer":   { "tier": 1, "label": "Materialnummer",   "from": "Material" },
-        "materialkurztext": { "tier": 1, "label": "Materialkurztext", "from": "Materialkurztext", "searchable": true },
-
-        "einsatzzweck":       { "tier": 1, "label": "Einsatzzweck",        "searchable": true,
-                                "$comment": "Wofür wird das Teil eingesetzt? Freitext, aus der Semantik-Anreicherung." },
-        "funktion":           { "tier": 1, "label": "Funktion",            "searchable": true,
-                                "$comment": "Was tut das Teil technisch?" },
-        "anforderungen":      { "tier": 1, "label": "Anforderungen",       "searchable": true,
-                                "$comment": "Nichtfunktionale Eigenschaften: UV-beständig, temperaturfest, lebensmittelecht ..." },
-        "branche":            { "tier": 1, "label": "Branche / Domäne",    "searchable": true, "facet": "branche" },
-        "synonyme":           { "tier": 1, "label": "Suchbegriffe",        "searchable": true,
-                                "$comment": "Alternative Bezeichnungen, unter denen Nutzer suchen würden." },
-
-        "werkstoff":        { "tier": 1, "label": "Werkstoff",        "from": "Werkstoff", "facet": "werkstoff" },
-        "normBezeichnung":  { "tier": 1, "label": "Norm",             "from": "NormBezeichnung" },
-        "laenge":           { "tier": 1, "label": "Länge",            "from": "Länge",  "facet": "laenge",  "numeric": true, "unit": "cm" },
-        "breite":           { "tier": 1, "label": "Breite",           "from": "Breite", "facet": "breite",  "numeric": true, "unit": "cm" },
-        "hoehe":            { "tier": 1, "label": "Höhe",             "from": "Höhe",   "facet": "hoehe",   "numeric": true, "unit": "cm" },
-        "abmessungseinheit":{ "tier": 1, "label": "Abmessungseinheit","from": "Abmessungseinheit" },
-        "volumen":          { "tier": 1, "label": "Volumen",          "from": "Volumen", "numeric": true },
-        "nettogewicht":     { "tier": 1, "label": "Nettogewicht",     "from": "Nettogewicht", "facet": "gewicht", "numeric": true, "unit": "kg" },
-        "bruttogewicht":    { "tier": 1, "label": "Bruttogewicht",    "from": "Bruttogewicht", "numeric": true },
-        "gewichtseinheit":  { "tier": 1, "label": "Gewichtseinheit",  "from": "Gewichtseinheit" },
-
-        "bestandsmenge":      { "tier": 2, "label": "Bestandsmenge",       "from": "Bestandsmenge", "numeric": true },
-        "sicherheitsbestand": { "tier": 2, "label": "Sicherheitsbestand",  "from": "Sicherheitsbestand", "numeric": true },
-        "planlieferzeit":     { "tier": 2, "label": "Planlieferzeit (Tage)", "from": "Planlieferzeit", "numeric": true },
-        "mindestlosgroesse":  { "tier": 2, "label": "Mindestlosgröße",     "from": "Mindestlosgröße", "numeric": true },
-        "maximallosgroesse":  { "tier": 2, "label": "Maximallosgröße",     "from": "Maximallosgröße", "numeric": true },
-        "preis":              { "tier": 2, "label": "Preis",               "from": "Preis", "numeric": true },
-        "hersteller":         { "tier": 2, "label": "Hersteller",          "from": "Hersteller" },
-        "lieferant":          { "tier": 2, "label": "Lieferant",           "from": "Lieferantenname" },
-
-        "zeichnungsnummerIntern": { "tier": 3, "label": "interne Zeichnungsnummer", "from": "interne ZchngNr" },
-        "zeichnungsnummer":       { "tier": 3, "label": "Zeichnungsnummer (Hersteller)", "from": "Zeichnungsnummer laut Hersteller" },
-        "edcAssetId":             { "tier": 1, "label": "Beziehbares EDC-Asset" }
+        "materialnummer": {
+          "tier": 1,
+          "label": "Materialnummer",
+          "from": "Material"
+        },
+        "benennung": {
+          "tier": 1,
+          "label": "Benennung",
+          "from": null,
+          "searchable": false
+        },
+        "materialkurztext": {
+          "tier": 1,
+          "label": "Materialkurztext",
+          "from": "Materialkurztext",
+          "searchable": true
+        },
+        "einsatzzweck": {
+          "tier": 1,
+          "label": "Einsatzzweck",
+          "searchable": true,
+          "$comment": "Wofür wird das Teil eingesetzt? Freitext, aus der Semantik-Anreicherung."
+        },
+        "funktion": {
+          "tier": 1,
+          "label": "Funktion",
+          "searchable": true,
+          "$comment": "Was tut das Teil technisch?"
+        },
+        "anforderungen": {
+          "tier": 1,
+          "label": "Anforderungen",
+          "searchable": true,
+          "$comment": "Nichtfunktionale Eigenschaften: UV-beständig, temperaturfest, lebensmittelecht ..."
+        },
+        "branche": {
+          "tier": 1,
+          "label": "Branche / Domäne",
+          "searchable": true,
+          "facet": "branche"
+        },
+        "synonyme": {
+          "tier": 1,
+          "label": "Suchbegriffe",
+          "searchable": true,
+          "$comment": "Alternative Bezeichnungen, unter denen Nutzer suchen würden."
+        },
+        "werkstoff": {
+          "tier": 1,
+          "label": "Werkstoff",
+          "from": "Werkstoff",
+          "facet": "werkstoff"
+        },
+        "normBezeichnung": {
+          "tier": 1,
+          "label": "Norm",
+          "from": "NormBezeichnung"
+        },
+        "laenge": {
+          "tier": 1,
+          "label": "Länge",
+          "from": "Länge",
+          "facet": "laenge",
+          "numeric": true,
+          "unit": "cm"
+        },
+        "breite": {
+          "tier": 1,
+          "label": "Breite",
+          "from": "Breite",
+          "facet": "breite",
+          "numeric": true,
+          "unit": "cm"
+        },
+        "hoehe": {
+          "tier": 1,
+          "label": "Höhe",
+          "from": "Höhe",
+          "facet": "hoehe",
+          "numeric": true,
+          "unit": "cm"
+        },
+        "abmessungseinheit": {
+          "tier": 1,
+          "label": "Abmessungseinheit",
+          "from": "Abmessungseinheit"
+        },
+        "volumen": {
+          "tier": 1,
+          "label": "Volumen",
+          "from": "Volumen",
+          "numeric": true
+        },
+        "nettogewicht": {
+          "tier": 1,
+          "label": "Nettogewicht",
+          "from": "Nettogewicht",
+          "facet": "gewicht",
+          "numeric": true,
+          "unit": "kg"
+        },
+        "bruttogewicht": {
+          "tier": 1,
+          "label": "Bruttogewicht",
+          "from": "Bruttogewicht",
+          "numeric": true
+        },
+        "gewichtseinheit": {
+          "tier": 1,
+          "label": "Gewichtseinheit",
+          "from": "Gewichtseinheit"
+        },
+        "bestandsmenge": {
+          "tier": 2,
+          "label": "Bestandsmenge",
+          "from": "Bestandsmenge",
+          "numeric": true
+        },
+        "sicherheitsbestand": {
+          "tier": 2,
+          "label": "Sicherheitsbestand",
+          "from": "Sicherheitsbestand",
+          "numeric": true
+        },
+        "planlieferzeit": {
+          "tier": 2,
+          "label": "Planlieferzeit (Tage)",
+          "from": "Planlieferzeit",
+          "numeric": true
+        },
+        "mindestlosgroesse": {
+          "tier": 2,
+          "label": "Mindestlosgröße",
+          "from": "Mindestlosgröße",
+          "numeric": true
+        },
+        "maximallosgroesse": {
+          "tier": 2,
+          "label": "Maximallosgröße",
+          "from": "Maximallosgröße",
+          "numeric": true
+        },
+        "preis": {
+          "tier": 2,
+          "label": "Preis",
+          "from": "Preis",
+          "numeric": true
+        },
+        "hersteller": {
+          "tier": 2,
+          "label": "Hersteller",
+          "from": "Hersteller"
+        },
+        "lieferant": {
+          "tier": 2,
+          "label": "Lieferant",
+          "from": "Lieferantenname"
+        },
+        "zeichnungsnummerIntern": {
+          "tier": 3,
+          "label": "interne Zeichnungsnummer",
+          "from": "interne ZchngNr"
+        },
+        "zeichnungsnummer": {
+          "tier": 3,
+          "label": "Zeichnungsnummer (Hersteller)",
+          "from": "Zeichnungsnummer laut Hersteller"
+        },
+        "edcAssetId": {
+          "tier": 1,
+          "label": "Beziehbares EDC-Asset"
+        }
       }
     },
-
     "Drucker": {
       "label": "Drucker",
       "sheet": "Druckerdaten",
       "idField": "printerId",
       "attributes": {
-        "printerId":          { "tier": 1, "label": "Drucker-ID",          "from": "PrinterID",     "facet": "drucker" },
-        "modell":             { "tier": 1, "label": "Modell",              "from": "Printer_Model", "searchable": true, "facet": "druckerModell" },
-        "druckbareWerkstoffe":{ "tier": 1, "label": "Druckbare Werkstoffe","from": "Druckbare Werkstoffe" },
-        "geladeneWerkstoffe": { "tier": 2, "label": "Geladene Werkstoffe", "from": "Geladene Werkstoffe" },
-        "standort":           { "tier": 1, "label": "Standort",            "from": "Standort", "facet": "standort" },
-        "status":             { "tier": 2, "label": "Status",              "from": "Status" },
-        "unternehmensId":     { "tier": 1, "label": "Unternehmens-ID",     "from": "Unternehmens_ID" },
-        "seriennummer":       { "tier": 3, "label": "Seriennummer",        "from": "Seriennummer" }
+        "printerId": {
+          "tier": 1,
+          "label": "Drucker-ID",
+          "from": "PrinterID",
+          "facet": "drucker"
+        },
+        "modell": {
+          "tier": 1,
+          "label": "Modell",
+          "from": "Printer_Model",
+          "searchable": true,
+          "facet": "druckerModell"
+        },
+        "druckbareWerkstoffe": {
+          "tier": 1,
+          "label": "Druckbare Werkstoffe",
+          "from": "Druckbare Werkstoffe"
+        },
+        "geladeneWerkstoffe": {
+          "tier": 2,
+          "label": "Geladene Werkstoffe",
+          "from": "Geladene Werkstoffe"
+        },
+        "standort": {
+          "tier": 1,
+          "label": "Standort",
+          "from": "Standort",
+          "facet": "standort"
+        },
+        "status": {
+          "tier": 2,
+          "label": "Status",
+          "from": "Status"
+        },
+        "unternehmensId": {
+          "tier": 1,
+          "label": "Unternehmens-ID",
+          "from": "Unternehmens_ID"
+        },
+        "seriennummer": {
+          "tier": 3,
+          "label": "Seriennummer",
+          "from": "Seriennummer"
+        }
       }
     },
-
     "Druckprofil": {
       "label": "Druckprofil",
       "$comment": "Material × Drucker -> G-Code: how this part is produced on that machine.",
       "sheet": "Bauteildruckdaten",
       "idField": "profilId",
       "attributes": {
-        "profilId":       { "tier": 1, "label": "Profil-ID" },
-        "materialnummer": { "tier": 1, "label": "Materialnummer", "from": "Materialnummer" },
-        "printerId":      { "tier": 1, "label": "Drucker-ID",     "from": "PrinterID", "facet": "drucker" },
-        "druckerModell":  { "tier": 1, "label": "Druckermodell",  "facet": "druckerModell" },
-        "werkstoff":      { "tier": 1, "label": "Werkstoff",      "from": "Werkstoff", "facet": "werkstoff" },
-        "mengeProDruck":  { "tier": 2, "label": "Menge pro Druck","from": "Menge pro Druck", "numeric": true },
-        "druckdauerMin":  { "tier": 2, "label": "Druckdauer (min)","from": "Druckdauer [min]", "numeric": true },
-        "status":         { "tier": 2, "label": "Status",         "from": "Status" },
-        "gcode":          { "tier": 3, "label": "G-Code",         "from": "G-Code" }
+        "profilId": {
+          "tier": 1,
+          "label": "Profil-ID"
+        },
+        "materialnummer": {
+          "tier": 1,
+          "label": "Materialnummer",
+          "from": "Materialnummer"
+        },
+        "printerId": {
+          "tier": 1,
+          "label": "Drucker-ID",
+          "from": "PrinterID",
+          "facet": "drucker"
+        },
+        "druckerModell": {
+          "tier": 1,
+          "label": "Druckermodell",
+          "facet": "druckerModell"
+        },
+        "werkstoff": {
+          "tier": 1,
+          "label": "Werkstoff",
+          "from": "Werkstoff",
+          "facet": "werkstoff"
+        },
+        "mengeProDruck": {
+          "tier": 2,
+          "label": "Menge pro Druck",
+          "from": "Menge pro Druck",
+          "numeric": true
+        },
+        "druckdauerMin": {
+          "tier": 2,
+          "label": "Druckdauer (min)",
+          "from": "Druckdauer [min]",
+          "numeric": true
+        },
+        "status": {
+          "tier": 2,
+          "label": "Status",
+          "from": "Status"
+        },
+        "gcode": {
+          "tier": 3,
+          "label": "G-Code",
+          "from": "G-Code"
+        }
       }
     },
-
     "Auftragsposition": {
       "label": "Auftragsposition",
       "sheet": "Auftragsdaten",
       "idField": "positionId",
       "attributes": {
-        "positionId":        { "tier": 1, "label": "Positions-ID" },
-        "auftragsnummer":    { "tier": 2, "label": "Auftragsnummer",   "from": "Auftragsnummer" },
-        "position":          { "tier": 2, "label": "Position",         "from": "Position" },
-        "materialnummer":    { "tier": 1, "label": "Materialnummer",   "from": "Materialnummer" },
-        "auftragsmenge":     { "tier": 2, "label": "Auftragsmenge",    "from": "Auftragsmenge", "numeric": true },
-        "wunschlieferdatum": { "tier": 2, "label": "Wunschlieferdatum","from": "Wunschlieferdatum" }
+        "positionId": {
+          "tier": 1,
+          "label": "Positions-ID"
+        },
+        "auftragsnummer": {
+          "tier": 2,
+          "label": "Auftragsnummer",
+          "from": "Auftragsnummer"
+        },
+        "position": {
+          "tier": 2,
+          "label": "Position",
+          "from": "Position"
+        },
+        "materialnummer": {
+          "tier": 1,
+          "label": "Materialnummer",
+          "from": "Materialnummer"
+        },
+        "auftragsmenge": {
+          "tier": 2,
+          "label": "Auftragsmenge",
+          "from": "Auftragsmenge",
+          "numeric": true
+        },
+        "wunschlieferdatum": {
+          "tier": 2,
+          "label": "Wunschlieferdatum",
+          "from": "Wunschlieferdatum"
+        }
       }
     },
-
     "Fertigungsauftrag": {
       "label": "Fertigungsauftrag",
       "$comment": "Charge: printer + time window.",
       "sheet": "Fertigungsauftragsdaten",
       "idField": "fertigungsauftragId",
       "attributes": {
-        "fertigungsauftragId": { "tier": 1, "label": "Fertigungsauftrags-ID", "from": "FertigungsauftragsID" },
-        "chargenId":           { "tier": 1, "label": "Chargen-ID" },
-        "materialnummer":      { "tier": 1, "label": "Materialnummer",  "from": "Materialnummer" },
-        "printerId":           { "tier": 1, "label": "Drucker-ID",      "from": "PrinterID", "facet": "drucker" },
-        "auftragsnummer":      { "tier": 2, "label": "Auftragsnummer",  "from": "Auftragsnummer" },
-        "position":            { "tier": 2, "label": "Position",        "from": "Position" },
-        "menge":               { "tier": 2, "label": "Menge",           "from": "Menge", "numeric": true },
-        "startzeitpunkt":      { "tier": 2, "label": "Startzeitpunkt",  "from": "Startzeitpunkt" },
-        "endzeitpunkt":        { "tier": 2, "label": "Endzeitpunkt",    "from": "Endzeitpunkt" },
-        "dauerMin":            { "tier": 2, "label": "Dauer (min)",     "numeric": true }
+        "fertigungsauftragId": {
+          "tier": 1,
+          "label": "Fertigungsauftrags-ID",
+          "from": "FertigungsauftragsID"
+        },
+        "chargenId": {
+          "tier": 1,
+          "label": "Chargen-ID"
+        },
+        "materialnummer": {
+          "tier": 1,
+          "label": "Materialnummer",
+          "from": "Materialnummer"
+        },
+        "printerId": {
+          "tier": 1,
+          "label": "Drucker-ID",
+          "from": "PrinterID",
+          "facet": "drucker"
+        },
+        "auftragsnummer": {
+          "tier": 2,
+          "label": "Auftragsnummer",
+          "from": "Auftragsnummer"
+        },
+        "position": {
+          "tier": 2,
+          "label": "Position",
+          "from": "Position"
+        },
+        "menge": {
+          "tier": 2,
+          "label": "Menge",
+          "from": "Menge",
+          "numeric": true
+        },
+        "startzeitpunkt": {
+          "tier": 2,
+          "label": "Startzeitpunkt",
+          "from": "Startzeitpunkt"
+        },
+        "endzeitpunkt": {
+          "tier": 2,
+          "label": "Endzeitpunkt",
+          "from": "Endzeitpunkt"
+        },
+        "dauerMin": {
+          "tier": 2,
+          "label": "Dauer (min)",
+          "numeric": true
+        }
       }
     },
-
     "Bauteil": {
       "label": "Bauteil (Einzelteil)",
       "$comment": "One physical part out of a charge — the level the DPP hangs off.",
       "sheet": "Bauteildatenbank",
       "idField": "bauteilId",
       "attributes": {
-        "bauteilId":      { "tier": 1, "label": "Bauteil-ID",     "from": "Bauteil-ID" },
-        "materialnummer": { "tier": 1, "label": "Materialnummer", "from": "Materialnummer" },
-        "chargenId":      { "tier": 2, "label": "Chargen-ID",     "from": "ChargenID" },
-        "dppStatus":      { "tier": 2, "label": "DPP-Status" },
-        "dppVersion":     { "tier": 2, "label": "DPP-Version" },
-        "ereignisse":     { "tier": 3, "label": "DPP-Ereignisse" }
+        "bauteilId": {
+          "tier": 1,
+          "label": "Bauteil-ID",
+          "from": "Bauteil-ID"
+        },
+        "materialnummer": {
+          "tier": 1,
+          "label": "Materialnummer",
+          "from": "Materialnummer"
+        },
+        "chargenId": {
+          "tier": 2,
+          "label": "Chargen-ID",
+          "from": "ChargenID"
+        },
+        "dppStatus": {
+          "tier": 2,
+          "label": "DPP-Status"
+        },
+        "dppVersion": {
+          "tier": 2,
+          "label": "DPP-Version"
+        },
+        "ereignisse": {
+          "tier": 3,
+          "label": "DPP-Ereignisse"
+        }
       }
     },
-
     "Qualitaetspruefung": {
       "label": "Qualitätsprüfung",
       "sheet": "Qualitätsdaten",
       "idField": "pruefungId",
       "attributes": {
-        "pruefungId":     { "tier": 1, "label": "Prüfungs-ID" },
-        "materialnummer": { "tier": 1, "label": "Materialnummer", "from": "Materialnummer" },
-        "chargenId":      { "tier": 2, "label": "Charge",         "from": "Charge" },
-        "status":         { "tier": 2, "label": "Prüfstatus",     "from": "Status" },
-        "scan3d":         { "tier": 2, "label": "3D-Scan",        "from": "3D-Scan" },
-        "abweichungX":    { "tier": 3, "label": "Abweichung X",   "from": "Abweichung_X", "numeric": true },
-        "abweichungY":    { "tier": 3, "label": "Abweichung Y",   "from": "Abweichung_Y", "numeric": true },
-        "abweichungZ":    { "tier": 3, "label": "Abweichung Z",   "from": "Abweichung_Z", "numeric": true }
+        "pruefungId": {
+          "tier": 1,
+          "label": "Prüfungs-ID"
+        },
+        "materialnummer": {
+          "tier": 1,
+          "label": "Materialnummer",
+          "from": "Materialnummer"
+        },
+        "chargenId": {
+          "tier": 2,
+          "label": "Charge",
+          "from": "Charge"
+        },
+        "status": {
+          "tier": 2,
+          "label": "Prüfstatus",
+          "from": "Status"
+        },
+        "scan3d": {
+          "tier": 2,
+          "label": "3D-Scan",
+          "from": "3D-Scan"
+        },
+        "abweichungX": {
+          "tier": 3,
+          "label": "Abweichung X",
+          "from": "Abweichung_X",
+          "numeric": true
+        },
+        "abweichungY": {
+          "tier": 3,
+          "label": "Abweichung Y",
+          "from": "Abweichung_Y",
+          "numeric": true
+        },
+        "abweichungZ": {
+          "tier": 3,
+          "label": "Abweichung Z",
+          "from": "Abweichung_Z",
+          "numeric": true
+        }
       }
     },
-
     "Maschinendaten": {
       "label": "Maschinenzeitreihen",
       "$comment": "Aggregate of the MTConnect series per printer/job; the raw series stays with the owner.",
       "sheet": "Maschinenzeitreihendaten",
       "idField": "serieId",
       "attributes": {
-        "serieId":      { "tier": 1, "label": "Zeitreihen-ID" },
-        "printerId":    { "tier": 1, "label": "Drucker-ID",   "facet": "drucker" },
-        "jobProgramm":  { "tier": 2, "label": "Job-Programm" },
-        "messwerte":    { "tier": 2, "label": "Anzahl Messwerte", "numeric": true },
-        "zeitraumVon":  { "tier": 2, "label": "Zeitraum von" },
-        "zeitraumBis":  { "tier": 2, "label": "Zeitraum bis" },
-        "kennzahlen":   { "tier": 3, "label": "Prozess-Kennzahlen" },
-        "rohdatenRef":  { "tier": 3, "label": "Rohdaten-Referenz" }
+        "serieId": {
+          "tier": 1,
+          "label": "Zeitreihen-ID"
+        },
+        "printerId": {
+          "tier": 1,
+          "label": "Drucker-ID",
+          "facet": "drucker"
+        },
+        "jobProgramm": {
+          "tier": 2,
+          "label": "Job-Programm"
+        },
+        "messwerte": {
+          "tier": 2,
+          "label": "Anzahl Messwerte",
+          "numeric": true
+        },
+        "zeitraumVon": {
+          "tier": 2,
+          "label": "Zeitraum von"
+        },
+        "zeitraumBis": {
+          "tier": 2,
+          "label": "Zeitraum bis"
+        },
+        "kennzahlen": {
+          "tier": 3,
+          "label": "Prozess-Kennzahlen"
+        },
+        "rohdatenRef": {
+          "tier": 3,
+          "label": "Rohdaten-Referenz"
+        }
       }
     }
   },
-
   "relations": [
-    { "from": "Unternehmen",       "rel": "betreibt",     "to": "Drucker" },
-    { "from": "Unternehmen",       "rel": "fuehrt",       "to": "Material" },
-    { "from": "Druckprofil",       "rel": "fuer",         "to": "Material" },
-    { "from": "Druckprofil",       "rel": "laeuft_auf",   "to": "Drucker" },
-    { "from": "Auftragsposition",  "rel": "bestellt",     "to": "Material" },
-    { "from": "Fertigungsauftrag", "rel": "erfuellt",     "to": "Auftragsposition" },
-    { "from": "Fertigungsauftrag", "rel": "fertigt",      "to": "Material" },
-    { "from": "Fertigungsauftrag", "rel": "laeuft_auf",   "to": "Drucker" },
-    { "from": "Fertigungsauftrag", "rel": "erzeugt",      "to": "Bauteil" },
-    { "from": "Fertigungsauftrag", "rel": "geprueft_in",  "to": "Qualitaetspruefung" },
-    { "from": "Drucker",           "rel": "liefert",      "to": "Maschinendaten" },
-    { "from": "Maschinendaten",    "rel": "gehoert_zu",   "to": "Fertigungsauftrag" }
+    {
+      "from": "Unternehmen",
+      "rel": "betreibt",
+      "to": "Drucker"
+    },
+    {
+      "from": "Unternehmen",
+      "rel": "fuehrt",
+      "to": "Material"
+    },
+    {
+      "from": "Druckprofil",
+      "rel": "fuer",
+      "to": "Material"
+    },
+    {
+      "from": "Druckprofil",
+      "rel": "laeuft_auf",
+      "to": "Drucker"
+    },
+    {
+      "from": "Auftragsposition",
+      "rel": "bestellt",
+      "to": "Material"
+    },
+    {
+      "from": "Fertigungsauftrag",
+      "rel": "erfuellt",
+      "to": "Auftragsposition"
+    },
+    {
+      "from": "Fertigungsauftrag",
+      "rel": "fertigt",
+      "to": "Material"
+    },
+    {
+      "from": "Fertigungsauftrag",
+      "rel": "laeuft_auf",
+      "to": "Drucker"
+    },
+    {
+      "from": "Fertigungsauftrag",
+      "rel": "erzeugt",
+      "to": "Bauteil"
+    },
+    {
+      "from": "Fertigungsauftrag",
+      "rel": "geprueft_in",
+      "to": "Qualitaetspruefung"
+    },
+    {
+      "from": "Drucker",
+      "rel": "liefert",
+      "to": "Maschinendaten"
+    },
+    {
+      "from": "Maschinendaten",
+      "rel": "gehoert_zu",
+      "to": "Fertigungsauftrag"
+    }
   ],
-
   "searchEntity": "Material",
   "searchableAttributes": [
-    "materialkurztext", "einsatzzweck", "funktion", "anforderungen",
-    "branche", "synonyme", "modell"
+    "materialkurztext",
+    "einsatzzweck",
+    "funktion",
+    "anforderungen",
+    "branche",
+    "synonyme",
+    "modell"
   ],
-
   "facets": {
-    "werkstoff":     { "label": "Werkstoff",   "kind": "categorical" },
-    "drucker":       { "label": "Drucker",     "kind": "categorical" },
-    "druckerModell": { "label": "Druckermodell", "kind": "categorical" },
-    "branche":       { "label": "Branche",     "kind": "categorical" },
-    "standort":      { "label": "Standort",    "kind": "categorical" },
-    "stadt":         { "label": "Stadt",       "kind": "categorical" },
-    "laenge":        { "label": "Länge",       "kind": "range", "unit": "cm" },
-    "breite":        { "label": "Breite",      "kind": "range", "unit": "cm" },
-    "hoehe":         { "label": "Höhe",        "kind": "range", "unit": "cm" },
-    "gewicht":       { "label": "Gewicht",     "kind": "range", "unit": "kg" }
+    "werkstoff": {
+      "label": "Werkstoff",
+      "kind": "categorical"
+    },
+    "drucker": {
+      "label": "Drucker",
+      "kind": "categorical"
+    },
+    "druckerModell": {
+      "label": "Druckermodell",
+      "kind": "categorical"
+    },
+    "branche": {
+      "label": "Branche",
+      "kind": "categorical"
+    },
+    "standort": {
+      "label": "Standort",
+      "kind": "categorical"
+    },
+    "stadt": {
+      "label": "Stadt",
+      "kind": "categorical"
+    },
+    "laenge": {
+      "label": "Länge",
+      "kind": "range",
+      "unit": "cm"
+    },
+    "breite": {
+      "label": "Breite",
+      "kind": "range",
+      "unit": "cm"
+    },
+    "hoehe": {
+      "label": "Höhe",
+      "kind": "range",
+      "unit": "cm"
+    },
+    "gewicht": {
+      "label": "Gewicht",
+      "kind": "range",
+      "unit": "kg"
+    }
   }
 }

@@ -2,6 +2,11 @@
 
 **Stand: 10. Juli 2026** · Branch `feat/compose-dataspace` · Details: [compose/README.md](../compose/README.md) · Gesamtplan: [AM2Scale-Dataspace-POC-Plan.pdf](AM2Scale-Dataspace-POC-Plan.pdf)
 
+> **Nachtrag (Repo-Cleanup, August 2026):** `k8s/` und die Consumer-UI sind
+> inzwischen gelöscht (Portal statt Consumer-UI), und alle Start-Skripte liegen
+> unter `compose/`. Der Normalfall ist `.\start.ps1` im Repo-Root. Aktueller
+> Stand: [../README.md](../README.md).
+
 ## Was ist neu
 
 Das MVD läuft nicht mehr auf Kubernetes/Kind, sondern als **Docker-Compose-Stacks

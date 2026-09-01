@@ -22,7 +22,7 @@ python ui\discovery\export_neo4j.py --all --tier 1 --out exports\kg-fremd.cypher
 python ui\discovery\export_neo4j.py --all --from-dataset --out exports\kg.cypher
 
 # nur ein Unternehmen
-python ui\discovery\export_neo4j.py --owner huber-ag --tier 3 --out exports\huber.cypher
+python ui\discovery\export_neo4j.py --owner fha-wien --tier 3 --out exportsha-wien.cypher
 ```
 
 `--tier 1|2|3` = Sichtbarkeitsstufe (fremd / Partner / Tochter). Attribute
@@ -52,7 +52,7 @@ cypher-shell -u neo4j -p <passwort> -f exports\kg-tochter.cypher
 MATCH (n:KG)-[r]->(m:KG) RETURN n, r, m;
 
 // ein Unternehmen
-MATCH (n:KG {owner:'huber-ag'})-[r]->(m) RETURN n, r, m;
+MATCH (n:KG {owner:'fha-wien'})-[r]->(m) RETURN n, r, m;
 
 // Bauteile aller Teilnehmer mit Werkstoff und Abmaß
 MATCH (b:Bauteil) RETURN b.owner, b.benennung, b.werkstoff, b.abmessung;

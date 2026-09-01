@@ -1,10 +1,13 @@
 # MVD als Docker-Compose-Stacks (Podman / Portainer)
 
-Dieses Verzeichnis ersetzt das Kubernetes/Kind-Deployment (`k8s/`) durch
-Docker-Compose-Stacks, die lokal mit **Podman** laufen und später 1:1 auf einen
-**Portainer**-Server deploybar sind. Der gesamte Zustand (Postgres, Vault,
-Keycloak) liegt in benannten Volumes und **überlebt Neustarts** von Stack,
-Podman-Machine und Rechner.
+Das Deployment des Datenraums: Docker-Compose-Stacks, die lokal mit **Podman**
+laufen und später 1:1 auf einen **Portainer**-Server deploybar sind. Der gesamte
+Zustand (Postgres, Vault, Keycloak) liegt in benannten Volumes und **überlebt
+Neustarts** von Stack, Podman-Machine und Rechner.
+
+Dies ersetzt das frühere Kubernetes/Kind-Deployment, das mit dem Repo-Cleanup im
+August 2026 entfernt wurde (in der Git-History unter `k8s/` weiterhin einsehbar).
+Überblick und Projektstand: [../README.md](../README.md).
 
 ## Architektur
 
@@ -21,8 +24,8 @@ Netzwerk "dataspace" (extern, geteilt)
 │     issuer-seed        One-Shot: Tenant, Attestation-/CredentialDefinitions
 │     custom-photo-api   nginx, serviert data/foto.png für asset-3
 │
-├── Stack mvd-provider       compose/company/docker-compose.yml + companies/provider/.env
-├── Stack mvd-consumer       (dasselbe Template, anderes .env)
+├── Stack mvd-fha-wien       compose/company/docker-compose.yml + companies/fha-wien/.env
+├── Stack mvd-oebb           (dasselbe Template, anderes .env)
 │     controlplane / dataplane / identityhub
 │     init-db, init-vault    One-Shots: DBs + AES-Key der Firma
 │     seed-identity          One-Shot: Holder, Participant Context, Credentials (ISSUED)
@@ -45,9 +48,9 @@ Namensschema pro Firma `<name>`:
 
 - Podman (Machine `podman-machine-default` initialisiert)
 - Docker Compose CLI (wird von `podman compose` automatisch verwendet)
-- Die lokalen Images `mvd-controlplane-local` / `mvd-dataplane-local`
-  (einmalig bauen: `gradlew :launchers:controlplane:shadowJar :launchers:dataplane:shadowJar`
-  und dann `podman build` wie in `../start-mvd.ps1`; IdentityHub/Issuer kommen von ghcr.io)
+- Die lokalen Images `mvd-controlplane-local` / `mvd-dataplane-local` — einmalig
+  mit `.\build-images.ps1` bauen (Gradle-Fatjars + `podman build`); IdentityHub
+  und IssuerService kommen fertig von ghcr.io.
 
 ## Starten
 
@@ -56,10 +59,13 @@ cd compose
 .\start-dataspace.ps1
 ```
 
+Für den Normalfall (Stacks **plus** Discovery und Portal) reicht `..\start.ps1`
+im Repo-Root; das ruft dieses Skript mit auf.
+
 Idempotent: startet Machine, Netzwerk, Infra-Stack und alle Firmen-Stacks unter
 `companies/`. Nach einem Rechner-Neustart einfach erneut ausführen — alle Daten
-(Assets, Verträge, Identitäten, Secrets) sind noch da. Kein `kubectl port-forward`
-mehr nötig, Traefik lauscht direkt auf Port 80.
+(Assets, Verträge, Identitäten, Secrets) sind noch da. Traefik lauscht direkt auf
+Port 80, es ist kein Port-Forwarding nötig.
 
 ## Neues Unternehmen anlegen
 
@@ -103,7 +109,7 @@ danach `podman restart traefik`.
 ## Dataspace-Portal (Multi-Tenant-UI)
 
 ```powershell
-.\..\start-portal.ps1        # http://127.0.0.1:5180  (vom Repo-Root: .\start-portal.ps1)
+.\start-portal.ps1           # http://127.0.0.1:5180
 ```
 
 Login mit **Keycloak-Account** (Realm `mvd`, Standard-Passwort `password`).
@@ -201,13 +207,21 @@ stellt die verifizierte Gegenpartei-DID der Policy-Engine als
 |---|---|
 | Management-API Firma | `http://cp.<name>.localhost/api/mgmt` (Header `X-Api-Key: password`) |
 | Dataplane Public | `http://dp.<name>.localhost/public/api/public` |
-| DID-Dokument | `http://ih.<name>.localhost/<name>/did.json` |
+| DID-Dokument | `http://identityhub-<name>:7083/<name>/did.json` — nur containerintern (s. u.) |
 | Keycloak | `http://keycloak.localhost` (admin/admin) |
 | IssuerService | `http://issuer.localhost` |
 | Vault | `http://vault.localhost` (Token `root`) |
 
-Die Bruno-Collection (`../Requests`) und die Consumer-UI (`../ui/consumer-ui`)
-sind bereits auf diese Endpunkte eingestellt.
+Die Bruno-Collection (`../Requests`) ist bereits auf diese Endpunkte eingestellt.
+
+> **DID-Dokumente gehen nicht über Traefik.** Der IdentityHub liefert das Dokument
+> abhängig vom `Host`-Header, und die DIDs zeigen auf den internen Namen
+> (`did:web:identityhub-<name>%3A7083:<name>`). Über `ih.<name>.localhost` kommt
+> daher `204 No Content` — verifiziert am 17.08.2026. Abrufen aus dem Netz heraus:
+> `podman run --rm --network dataspace curlimages/curl -s http://identityhub-<name>:7083/<name>/did.json`.
+> Die DSP-Kommunikation ist davon nicht betroffen (Teilnehmer lösen einander
+> containerintern auf). Beim Portainer-Deployment mit echten Hostnamen müssen die
+> DIDs auf denselben Namen ausgestellt werden wie die Traefik-Regeln.
 
 ## Portainer-Deployment (später)
 

@@ -5,11 +5,34 @@ $ErrorActionPreference = "Stop"
 
 $composeRoot = $PSScriptRoot
 
-Write-Host "Ensuring Podman machine is running..."
-$machineState = podman machine inspect podman-machine-default --format "{{.State}}" 2>$null
-if ($machineState -ne "running") {
-    podman machine start podman-machine-default
+function Assert-PodmanMachine {
+    $name = "podman-machine-default"
+    $state = podman machine inspect $name --format "{{.State}}" 2>$null
+    if ($state -eq "running") { return }
+
+    Write-Host "Starting Podman machine '$name'..."
+    podman machine start $name
+    $code = $LASTEXITCODE
+
+    $state = podman machine inspect $name --format "{{.State}}" 2>$null
+    if ($state -eq "running") { return }
+
+    Write-Host ""
+    Write-Error @"
+Podman machine '$name' could not be started (exit $code, state '$state').
+Nothing else will work until it runs, so stopping here.
+
+If the error above mentions WSL and code 0x80070569
+("Anmeldung fehlgeschlagen / logon type not granted"), WSL itself cannot create
+its VM - verify with:  wsl -d $name -- echo ok
+That is a machine policy problem, not a problem with this repo: the account
+'NT VIRTUAL MACHINE\Virtual Machines' needs the "Log on as a service" right.
+Fixing it needs administrator rights (secpol.msc -> Local Policies ->
+User Rights Assignment -> Log on as a service), so it is one for IT.
+"@
 }
+
+Assert-PodmanMachine
 
 Write-Host "Ensuring 'dataspace' network exists..."
 podman network exists dataspace 2>$null

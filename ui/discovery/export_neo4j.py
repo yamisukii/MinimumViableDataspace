@@ -8,7 +8,7 @@ makes the access-level story visible at a glance.
 
     python export_neo4j.py --all --out kg.cypher              # full graph
     python export_neo4j.py --all --tier 1 --out kg-fremd.cypher
-    python export_neo4j.py --owner huber-ag --tier 2 --out kg-partner.cypher
+    python export_neo4j.py --owner fha-wien --tier 2 --out kg-partner.cypher
     python export_neo4j.py --all --from-dataset --out kg.cypher   # no service needed
 
 Load it:
@@ -87,16 +87,19 @@ def graphs_from_dataset(owners=None):
     """Build the graphs directly from the workbook (discovery not required)."""
     sys.path.insert(0, str(ROOT))
     import openpyxl
-    from import_dataset import DATASET, DEFAULT_MAPPING, build_graph
+    from import_dataset import DATASET, DEFAULT_MAPPING, build_graphs
     if not DATASET.exists():
         raise SystemExit(f"Dataset nicht gefunden: {DATASET}")
     wb = openpyxl.load_workbook(DATASET, read_only=True, data_only=True)
-    out = []
-    for uid, company in DEFAULT_MAPPING.items():
-        if owners and company not in owners:
-            continue
-        out.append(build_graph(wb, company, uid))
-    return out
+    unknown = [o for o in (owners or []) if o not in DEFAULT_MAPPING]
+    if unknown:
+        raise SystemExit(f"Unbekannte Teilnehmer: {', '.join(unknown)} "
+                         f"(bekannt: {', '.join(sorted(DEFAULT_MAPPING))})")
+    # always build every participant: the materials are distributed across all of
+    # them, so a partial mapping would yield a different graph than the live one
+    graphs = build_graphs(wb, DEFAULT_MAPPING)
+    wanted = owners or sorted(graphs)
+    return [graphs[o] for o in wanted if o in graphs]
 
 
 def to_cypher(graphs, cap, wipe=True):
@@ -147,7 +150,7 @@ def to_cypher(graphs, cap, wipe=True):
     lines += [
         "// ---- nützliche Abfragen (im Neo4j Browser einzeln ausführen) ----",
         "// alles anzeigen:            MATCH (n:KG)-[r]->(m:KG) RETURN n, r, m;",
-        "// ein Unternehmen:           MATCH (n:KG {owner:'huber-ag'})-[r]->(m) RETURN n,r,m;",
+        "// ein Unternehmen:           MATCH (n:KG {owner:'fha-wien'})-[r]->(m) RETURN n,r,m;",
         "// Bauteile mit Werkstoff:    MATCH (b:Bauteil) RETURN b.owner, b.benennung, b.werkstoff, b.abmessung;",
         "// Herkunftskette eines DPP:  MATCH p=(d:DPP)-[*1..3]-(x:KG) RETURN p;",
         "// was verbirgt dieses Level: MATCH (n:KG) WHERE n.verborgen > 0 "
@@ -164,7 +167,8 @@ def main():
     ap.add_argument("--tier", type=int, default=3, choices=[1, 2, 3],
                     help="Sichtbarkeitsstufe: 1=fremd, 2=Partner, 3=Tochter (Standard 3)")
     ap.add_argument("--from-dataset", action="store_true",
-                    help="direkt aus AM_Dataset.xlsx bauen (Discovery-Service nicht nötig)")
+                    help="direkt aus data/AM2Scale_Mini_Datensatz_erweitert.xlsx bauen "
+                         "(Discovery-Service nicht nötig)")
     ap.add_argument("--no-wipe", action="store_true", help="vorhandene KG-Knoten nicht löschen")
     ap.add_argument("--out", default="kg.cypher", help="Zieldatei")
     args = ap.parse_args()

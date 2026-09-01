@@ -17,7 +17,7 @@ search over part master data has very little to work with.
 
     python import_dataset.py --all
     python import_dataset.py --all --dry-run --out graph.json
-    python import_dataset.py --all --material-owner huber-ag
+    python import_dataset.py --all --material-owner fha-wien
 """
 import argparse
 import json
@@ -43,11 +43,60 @@ COMPANIES_DIR = REPO / "compose" / "companies"
 
 # dataspace participant -> dataset company (U_ID) it plays
 DEFAULT_MAPPING = {
-    "huber-ag":    "U6",   # Fraunhofer Austria Wien — 3 Drucker
-    "rheinmetall": "U7",   # Fraunhofer Austria Graz — 1 Drucker
-    "provider":    "U1",   # ÖBB Wien
-    "consumer":    "U2",   # WienerLinien
+    "fha-wien":          "U6",   # Fraunhofer Austria Wien — 3 Drucker
+    "fha-tirol":         "U7",   # Fraunhofer Austria — 1 Drucker (s. COMPANY_OVERRIDES)
+    "oebb":              "U1",   # ÖBB Wien
+    "wiener-linien":     "U2",   # WienerLinien
+    "wien-energie":      "U3",   # WienEnergie
+    "wiener-netze":      "U4",   # WienerNetze
+    "wiener-stadtwerke": "U0",   # Konzernholding — synthetisch, s. SYNTHETIC_FIRMS
 }
+
+# U5 (ÖBB St. Pölten) is deliberately unused: it owns no printers, so it would
+# add nothing but a second, dataless ÖBB participant.
+
+# Companies the dataset does not contain. Same shape as an Unternehmensdaten row.
+SYNTHETIC_FIRMS = {
+    "U0": {"U_ID": "U0", "Unternehmensname": "Wiener Stadtwerke",
+           "Straße": "Thomas-Klestil-Platz 14", "Stadt": "Wien", "Land": "Austria",
+           "Stromtarif": 0.06, "CO2_KWh": 0.09},
+}
+
+# Corrections applied on top of the Unternehmensdaten row, keyed by sheet column.
+# Lets a participant present its real identity without touching the Excel file.
+# fha-tirol plays U7, which the dataset records as the Graz site.
+COMPANY_OVERRIDES = {
+    "fha-wien":  {"Unternehmensname": "Fraunhofer Austria Wien"},
+    "fha-tirol": {"Unternehmensname": "Fraunhofer Austria Tirol",
+                  "Stadt": "Innsbruck", "Straße": "Karl-Kapferer-Straße 5"},
+    "oebb":      {"Unternehmensname": "ÖBB"},
+}
+
+# The ERP short texts are raw codes (PYC3D_DUCK_KEYCHAIN). These give them a
+# readable name for the UI; the code itself stays in the asset name so the
+# record remains traceable back to the ERP. Unlisted materials fall back to a
+# tidied-up short text.
+MATERIAL_LABELS = {
+    "Worldcup_386":         "Pokal",
+    "PYC3D_DUCK_KEYCHAIN":  "Enten-Schlüsselanhänger",
+    "Adapterplatte_47":     "Adapterplatte",
+    "Gehaeusedeckel_Klein": "Gehäusedeckel klein",
+}
+
+
+def material_label(kurztext):
+    """Readable label for an ERP short text, or None if there is nothing to show."""
+    if not kurztext:
+        return None
+    raw = str(kurztext).strip()
+    known = MATERIAL_LABELS.get(raw)
+    if known:
+        return known
+    # drop a trailing running number, turn separators into spaces
+    tidied = re.sub(r"[_-]+\d+$", "", raw)
+    tidied = re.sub(r"[_-]+", " ", tidied).strip()
+    return tidied or None
+
 
 SEMANTIC_FIELDS = ("einsatzzweck", "funktion", "anforderungen", "branche", "synonyme")
 
@@ -176,6 +225,8 @@ def build_graphs(wb, mapping, material_owner=None, include_metrics=False):
     semantics = load_semantics(wb)
 
     firms = {str(r.get("U_ID")).strip(): r for r in sheet_dicts(wb, "Unternehmensdaten")}
+    for uid, row in SYNTHETIC_FIRMS.items():
+        firms.setdefault(uid, row)
     uid_to_company = {uid: comp for comp, uid in mapping.items()}
 
     graphs = {}
@@ -183,6 +234,9 @@ def build_graphs(wb, mapping, material_owner=None, include_metrics=False):
         firm_row = firms.get(uid)
         if not firm_row:
             raise SystemExit(f"U_ID '{uid}' nicht im Dataset (vorhanden: {sorted(firms)})")
+        override = COMPANY_OVERRIDES.get(company)
+        if override:
+            firm_row = {**firm_row, **override}
         graphs[company] = {
             "owner": company,
             "did": f"did:web:identityhub-{company}%3A7083:{company}",
@@ -211,7 +265,7 @@ def build_graphs(wb, mapping, material_owner=None, include_metrics=False):
         printer_owner[pid] = owner
         printer_serial[pid] = str(r.get("Seriennummer") or "").strip()
         add(owner, node(f"drucker:{pid}", "Drucker", map_attrs("Drucker", r)))
-        link(owner, f"unternehmen:{DEFAULT_MAPPING.get(owner, mapping[owner])}", "betreibt", f"drucker:{pid}")
+        link(owner, f"unternehmen:{mapping[owner]}", "betreibt", f"drucker:{pid}")
 
     # --- Material: no owner in the data -> distribute (or pin) --------------
     materials = sheet_dicts(wb, "ERP")
@@ -225,6 +279,10 @@ def build_graphs(wb, mapping, material_owner=None, include_metrics=False):
         material_owner_of[matnr] = owner
         attrs = map_attrs("Material", r)
         attrs.update(semantics.get(matnr, {}))
+        # readable title for the UIs; the raw short text stays alongside it
+        label = material_label(attrs.get("materialkurztext"))
+        if label and label != str(attrs.get("materialkurztext")):
+            attrs["benennung"] = label
         add(owner, node(f"material:{matnr}", "Material", attrs))
         link(owner, f"unternehmen:{mapping[owner]}", "fuehrt", f"material:{matnr}")
 
@@ -388,8 +446,13 @@ def create_material_asset(company, mat_node):
     store.mkdir(parents=True, exist_ok=True)
     (store / filename).write_text(json.dumps(sheet, ensure_ascii=False, indent=1), encoding="utf-8")
 
+    kurztext = attrs.get("materialkurztext") or matnr
+    label = material_label(attrs.get("materialkurztext"))
+    display = (f"Stammdaten {label} ({kurztext})"
+               if label and label != str(kurztext) else f"Stammdaten {kurztext}")
+
     properties = {
-        "name": f"Stammdatenblatt {attrs.get('materialkurztext') or matnr}",
+        "name": display,
         "description": attrs.get("einsatzzweck") or f"Stammdaten zu {matnr}",
         "am2scale:partName": attrs.get("materialkurztext") or matnr,
         "am2scale:material": attrs.get("materialkurztext", ""),
@@ -423,6 +486,9 @@ def create_material_asset(company, mat_node):
             except urllib.error.HTTPError as e:
                 if e.code != 409:
                     raise
+                # already there: update it, otherwise renames/edits never land
+                if path.endswith("/assets"):
+                    mgmt(company, "PUT", path, payload)
         return asset_id
     except (urllib.error.HTTPError, urllib.error.URLError) as e:
         print(f"  ! EDC-Asset für {matnr} nicht angelegt ({e}) — läuft der Stack?")
