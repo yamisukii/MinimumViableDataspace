@@ -93,7 +93,7 @@ API:
 ```powershell
 cd compose
 .\new-company.ps1 -Name mueller-gmbh            # anlegen + deployen
-.\new-company.ps1 -Name provider -DemoAssets    # zusätzlich Legacy-Assets asset-1/2/3
+.\new-company.ps1 -Name oebb -DemoAssets        # zusätzlich Legacy-Assets asset-1/2/3
 ```
 
 Beide Varianten erzeugen `companies/<name>/.env` + Traefik-Route und deployen den
@@ -211,6 +211,7 @@ stellt die verifizierte Gegenpartei-DID der Policy-Engine als
 | Keycloak | `http://keycloak.localhost` (admin/admin) |
 | IssuerService | `http://issuer.localhost` |
 | Vault | `http://vault.localhost` (Token `root`) |
+| Dokumentation | `http://127.0.0.1:5190` — Handbuch und alle Dokus, mit eigener API |
 
 Die Bruno-Collection (`../Requests`) ist bereits auf diese Endpunkte eingestellt.
 

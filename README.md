@@ -23,7 +23,7 @@ Branch `feat/compose-dataspace`. Lauffähig und demonstrierbar:
 | **Knowledge Graph** | 113 Knoten aus dem echten AM2Scale-Datensatz, 9 Entitätstypen, Attribute einzeln nach Tier klassifiziert |
 | **Suche** | Semantische Vektorsuche (offline, model2vec) getrennt von strukturierten Filtern; jeder Treffer attributweise auf das Level des Betrachters beschnitten |
 
-**Bekannte Provisorien:** Portal, Discovery und Onboarding laufen als Host-Prozesse
+**Bekannte Provisorien:** Portal, Discovery, Docs und Onboarding laufen als Host-Prozesse
 (nicht containerisiert); alle Passwörter sind Demo-Werte (`password`, Vault-Token
 `root`, Keycloak `admin/admin`); Vault entsiegelt sich selbst mit dem Key aus dem
 Volume; die Semantik-Freitexte in `data/material-semantik.json` sind Platzhalter
@@ -78,7 +78,7 @@ einmaligen Image-Build.
 cd compose
 .\build-images.ps1          # einmalig: Controlplane-/Dataplane-Images bauen
 cd ..
-.\start.ps1                 # Stacks + Discovery + Portal in einem Rutsch
+.\start.ps1                 # Stacks + Discovery + Portal + Docs in einem Rutsch
 ```
 
 Danach [http://127.0.0.1:5180](http://127.0.0.1:5180) öffnen, Login z. B.
@@ -97,11 +97,12 @@ Alles unter `compose/`, plus ein Sammel-Skript im Root:
 
 | Skript | Zweck | Wann |
 |---|---|---|
-| `start.ps1` | Stacks + Discovery + Portal zusammen hochfahren | **der Normalfall** |
+| `start.ps1` | Stacks + Discovery + Portal + Docs zusammen hochfahren | **der Normalfall** |
 | `compose/build-images.ps1` | `mvd-controlplane-local` / `mvd-dataplane-local` bauen | einmalig, und nach Java-Änderungen unter `launchers/` oder `extensions/` |
 | `compose/start-dataspace.ps1` | nur die Podman-Stacks (Infra + alle Firmen) | wenn man die UIs nicht braucht |
 | `compose/start-discovery.ps1` | Discovery-Service, KG + Vektorsuche (`:5185`) | wird vom Portal benötigt |
 | `compose/start-portal.ps1` | Dataspace-Portal (`:5180`) | die Haupt-UI |
+| `compose/start-docs.ps1` | Dokumentationsdienst (`:5190`) | Handbuch und alle technischen Dokus |
 | `compose/start-onboarding.ps1` | Onboarding-/Registry-UI (`:5175`) | nur zum Anlegen neuer Firmen |
 | `compose/new-company.ps1` | dasselbe per CLI: `.\new-company.ps1 -Name mueller-gmbh` | Alternative zur Onboarding-UI |
 
@@ -129,6 +130,7 @@ Netzwerk "dataspace" (Podman, geteilt)
 └── Host-Prozesse (noch nicht containerisiert)
       portal    :5180      Multi-Tenant-UI
       discovery :5185      Knowledge Graph + Vektorsuche
+      docs      :5190      Dokumentation + eigene API
       onboarding:5175      Registry + Anlegen neuer Firmen
 ```
 
@@ -146,6 +148,7 @@ Details zu Namensschema, Traefik-Routen, Portainer-Deployment und Troubleshootin
 |---|---|
 | Portal | `http://127.0.0.1:5180` (Login `<firmenname>` / `password`) |
 | Discovery | `http://127.0.0.1:5185` |
+| Dokumentation | `http://127.0.0.1:5190` (API: `/api/docs`, `/api/search?q=`, `/api/health`) |
 | Onboarding | `http://127.0.0.1:5175` |
 | Management-API einer Firma | `http://cp.<name>.localhost/api/mgmt` (Header `X-Api-Key: password`) |
 | Dataplane Public | `http://dp.<name>.localhost/public/api/public` |
@@ -172,6 +175,7 @@ Details zu Namensschema, Traefik-Routen, Portainer-Deployment und Troubleshootin
 | `compose/companies/<name>/` | pro Firma: `.env`, `company.json`, `relationships.json`, `storage/` (Assets + Downloads, im Explorer sichtbar) |
 | `ui/portal/` | Dataspace-Portal (Python stdlib + Vanilla JS, keine Build-Kette) |
 | `ui/discovery/` | Discovery-Service, KG-Schema, `import_dataset.py`, `export_neo4j.py` |
+| `ui/docs/` | Dokumentationsdienst; `content/handbuch.md` ist das Anwenderhandbuch |
 | `launchers/` | EDC-Runtimes; `controlplane` und `dataplane` enthalten eigene Extensions und werden lokal gebaut, `identity-hub`/`issuerservice` kommen als Image von ghcr.io |
 | `extensions/` | Runtime-Abhängigkeiten der Launcher (Dataplane Public API v2, Dataplane-Registrierung) |
 | `data/` | Quelldatensatz `AM2Scale_Mini_Datensatz_erweitert.xlsx`, Semantik-Anreicherung, Demo-Foto |
@@ -182,9 +186,15 @@ Details zu Namensschema, Traefik-Routen, Portainer-Deployment und Troubleshootin
 
 ## Dokumentation
 
-**Für Anwender:** [Anwenderhandbuch](https://claude.ai/code/artifact/35c29dcd-ff19-4ffa-90c2-8c0a6cfc7e11)
-— anmelden, Daten finden, beziehen, anbieten, Zugriffsstufen verwalten, Fehlerbehebung.
-Ohne technische Vorkenntnisse lesbar; der richtige Einstieg für Demo-Teilnehmer und Projektpartner.
+**Für Anwender:** das [Anwenderhandbuch](ui/docs/content/handbuch.md) — anmelden,
+Daten finden, beziehen, anbieten, Zugriffsstufen verwalten, Fehlerbehebung. Ohne
+technische Vorkenntnisse lesbar; der richtige Einstieg für Demo-Teilnehmer und
+Projektpartner.
+
+Am bequemsten über den **Docs-Dienst**, der alle Dokumente hier gebündelt
+ausliefert — inklusive Volltextsuche und Querverweisen:
+`http://127.0.0.1:5190` (läuft mit `.\start.ps1` automatisch mit, oder einzeln
+über `compose\start-docs.ps1`).
 
 **Für Entwickler:** die folgenden Notizen, chronologisch, jeweils mit Stand und verifizierten Beispielen:
 

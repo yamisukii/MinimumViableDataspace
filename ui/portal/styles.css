@@ -122,6 +122,19 @@ button.ghost {
   background: transparent;
   border: 1px solid rgba(255,255,255,0.6);
 }
+/* the header's Hilfe link leaves the app, so it is an <a> styled like a ghost button */
+a.ghost {
+  display: inline-block;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.6);
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 14px;
+  color: #fff;
+  text-decoration: none;
+  line-height: 1.2;
+}
+a.ghost:hover { background: rgba(255,255,255,0.12); }
 
 /* ---------------- partners & catalog ---------------- */
 .partner {

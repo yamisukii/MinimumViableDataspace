@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AM2Scale · Dokumentation</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark">AM2Scale</span>
+        <span class="brand-sub">Dokumentation</span>
+      </div>
+      <div class="topbar-tools">
+        <input type="search" id="search" placeholder="Doku durchsuchen…" autocomplete="off"
+               aria-label="Dokumentation durchsuchen">
+        <a class="ext" href="http://127.0.0.1:5180" target="_blank" rel="noopener">Portal öffnen ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="shell">
+    <nav class="sidebar" aria-label="Dokumente">
+      <div id="doclist"></div>
+      <div class="sidebar-foot">
+        <p class="sidebar-foot-title">API</p>
+        <ul class="apilist">
+          <li><a href="/api/docs" target="_blank" rel="noopener">/api/docs</a></li>
+          <li><a href="/api/search?q=tier" target="_blank" rel="noopener">/api/search?q=…</a></li>
+          <li><a href="/api/health" target="_blank" rel="noopener">/api/health</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <main id="main">
+      <p class="loading">Lade Dokumentation…</p>
+    </main>
+
+    <aside class="onthispage" id="onthispage" aria-label="Auf dieser Seite"></aside>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

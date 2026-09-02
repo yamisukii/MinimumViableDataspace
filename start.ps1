@@ -62,6 +62,11 @@ Start-HostService "start-portal.ps1" "Portal (:5180)"
 if (-not (Wait-Port 5180 60)) {
     Write-Warning "Portal did not bind :5180 within 60s - check its window for errors."
 }
+
+Start-HostService "start-docs.ps1" "Docs (:5190)"
+if (-not (Wait-Port 5190 60)) {
+    Write-Warning "Docs did not bind :5190 within 60s - check its window for errors."
+}
 if ($WithOnboarding) {
     Start-HostService "start-onboarding.ps1" "Onboarding (:5175)"
     if (-not (Wait-Port 5175 60)) {
@@ -73,15 +78,18 @@ Write-Host ""
 Write-Host "Status:"
 Write-Host "  Discovery  :5185  $(if (Test-Port 5185) {'up'} else {'DOWN'})"
 Write-Host "  Portal     :5180  $(if (Test-Port 5180) {'up'} else {'DOWN'})"
+Write-Host "  Docs       :5190  $(if (Test-Port 5190) {'up'} else {'DOWN'})"
 if ($WithOnboarding) { Write-Host "  Onboarding :5175  $(if (Test-Port 5175) {'up'} else {'DOWN'})" }
 
 Write-Host ""
 Write-Host "Open the portal:  http://127.0.0.1:5180"
-Write-Host "  Login: <firmenname> / password   (e.g. huber-ag)"
+Write-Host "  Login: <firmenname> / password   (e.g. fha-wien)"
+Write-Host "Documentation:    http://127.0.0.1:5190"
 Write-Host ""
 Write-Host "The host services run in their own windows - closing a window stops that"
 Write-Host "service. If a window did not open (e.g. when run from a non-interactive"
-Write-Host "shell), start them by hand:  compose\start-discovery.ps1, compose\start-portal.ps1"
+Write-Host "shell), start them by hand:  compose\start-discovery.ps1, compose\start-portal.ps1,"
+Write-Host "compose\start-docs.ps1"
 Write-Host ""
 Write-Host "The knowledge graph and its vectors persist in ui\discovery\kg.json, so search"
 Write-Host "works right after a restart. Rebuild it only after changing the dataset:"
