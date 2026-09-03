@@ -1,0 +1,67 @@
+# AM2Scale host services as one container (documentation + discovery).
+#
+#   podman compose -p mvd-ui -f compose/ui/docker-compose.yml up -d
+#
+# Build the image first (from the repository root, the docs service also serves
+# Markdown from outside ui/):
+#   podman build -t am2scale-ui:latest -f ui/Dockerfile .
+#
+# The container joins the shared "dataspace" network under two aliases, so the
+# portal reaches the search service as http://discovery:5185 exactly as the
+# other stacks address each other by name.
+#
+# Ports are still published on the host during the transition: the portal and
+# ui/discovery/import_dataset.py currently talk to 127.0.0.1:5185, and keep
+# working unchanged that way. Once the portal moves into this container too,
+# the published ports can go and Traefik takes over completely.
+
+services:
+  am2scale-ui:
+    image: localhost/am2scale-ui:latest
+    container_name: am2scale-ui
+    restart: unless-stopped
+    environment:
+      SERVICES: "docs,discovery"
+      BIND_HOST: "0.0.0.0"
+      DOCS_PORT: "5190"
+      DISCOVERY_PORT: "5185"
+      DISCOVERY_DATA_DIR: "/data"
+      HF_HUB_OFFLINE: "1"
+    ports:
+      - "5190:5190"
+      - "5185:5185"
+    volumes:
+      # knowledge graph + vector index survive restarts and image rebuilds
+      - ui-data:/data
+      # The image already carries a copy of the documentation, so it also runs
+      # standalone. These read-only mounts put the working copy on top of it, so
+      # editing a Markdown file and reloading the page works as it does when the
+      # service runs on the host - no rebuild needed. On a Portainer Git stack
+      # they resolve to the checkout on the server, which is what we want there.
+      - ../../ui/docs/content:/app/ui/docs/content:ro
+      - ../../docs:/app/docs:ro
+      - ../../README.md:/app/README.md:ro
+      - ../README.md:/app/compose/README.md:ro
+    # Podman builds OCI images, which drop the Dockerfile's HEALTHCHECK, so the
+    # real check lives here. Both services must answer, not just one.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:5190/api/health', timeout=4);
+          urllib.request.urlopen('http://127.0.0.1:5185/health', timeout=4)"
+      interval: 15s
+      timeout: 6s
+      start_period: 90s
+      retries: 3
+    networks:
+      dataspace:
+        aliases: [docs, discovery]
+
+volumes:
+  ui-data:
+
+networks:
+  dataspace:
+    external: true

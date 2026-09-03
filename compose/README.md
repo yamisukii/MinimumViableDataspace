@@ -59,8 +59,9 @@ cd compose
 .\start-dataspace.ps1
 ```
 
-Für den Normalfall (Stacks **plus** Discovery und Portal) reicht `..\start.ps1`
-im Repo-Root; das ruft dieses Skript mit auf.
+Startet Infra, alle Firmen-Stacks **und** den UI-Container (Doku + Suche). Für
+den Normalfall inklusive Portal reicht `..\start.ps1` im Repo-Root; das ruft
+dieses Skript mit auf.
 
 Idempotent: startet Machine, Netzwerk, Infra-Stack und alle Firmen-Stacks unter
 `companies/`. Nach einem Rechner-Neustart einfach erneut ausführen — alle Daten
@@ -148,11 +149,11 @@ EDC behält seinen kryptografischen Gate (Membership + DID-Restriktion).
 
 ### Vektorsuche (Discovery über den KG)
 
-Ein zentraler **Discovery-Service** (Host-Prozess, `.\start-discovery.ps1`,
-Port 5185) indexiert die freigegebene **KG-Projektion** jedes Unternehmens und
+Ein zentraler **Discovery-Service** (Container `am2scale-ui`, Port 5185, siehe
+„UI-Container" unten) indexiert die freigegebene **KG-Projektion** jedes Unternehmens und
 bietet semantische Suche mit **lokalen Offline-Embeddings** (model2vec
-`potion-base-8M`, kein Torch/Internet nach dem einmaligen Modell-Download).
-Einmalig: `python -m pip install model2vec numpy`.
+`potion-base-8M`, kein Torch). Im Container ist das Modell eingebacken; für den
+Host-Betrieb einmalig `python -m pip install model2vec numpy`.
 
 - Gematcht wird über die **T1-Stammdaten** (Materialkurztext, Werkstoff, Abmaße).
 - Jeder Treffer wird **attributweise level-gefiltert**: der Betrachter sieht nur
@@ -177,8 +178,9 @@ Die Suche findet dann auch KG-Knoten (`kind: "kg"`); „Im KG anzeigen" öffnet 
 Nachbarschaftsgraphen — Knoten, Beziehungen und Attribute jeweils auf das
 effektive Level beschnitten. Details: [docs/UPDATE-2026-08-KG-aus-Dataset.md](../docs/UPDATE-2026-08-KG-aus-Dataset.md).
 
-> Hinweis: Der Discovery-Service läuft derzeit als Host-Prozess (wie die Portale).
-> Für Portainer wird er analog containerisiert (Modell ins Image gebacken).
+> Erledigt: Der Discovery-Service ist containerisiert, das Modell liegt im Image.
+> Er teilt den Container `am2scale-ui` mit der Dokumentation — siehe
+> „UI-Container" unten. Offen sind noch Portal und Onboarding.
 
 Dateiablage pro Firma (persistent, im Explorer sichtbar):
 `compose/companies/<name>/storage/assets` (Angebote, serviert vom
@@ -211,7 +213,7 @@ stellt die verifizierte Gegenpartei-DID der Policy-Engine als
 | Keycloak | `http://keycloak.localhost` (admin/admin) |
 | IssuerService | `http://issuer.localhost` |
 | Vault | `http://vault.localhost` (Token `root`) |
-| Dokumentation | `http://127.0.0.1:5190` — Handbuch und alle Dokus, mit eigener API |
+| Dokumentation | `http://docs.localhost` oder `http://127.0.0.1:5190` — Handbuch und alle Dokus, mit eigener API |
 
 Die Bruno-Collection (`../Requests`) ist bereits auf diese Endpunkte eingestellt.
 
@@ -223,6 +225,48 @@ Die Bruno-Collection (`../Requests`) ist bereits auf diese Endpunkte eingestellt
 > Die DSP-Kommunikation ist davon nicht betroffen (Teilnehmer lösen einander
 > containerintern auf). Beim Portainer-Deployment mit echten Hostnamen müssen die
 > DIDs auf denselben Namen ausgestellt werden wie die Traefik-Regeln.
+
+## UI-Container (Dokumentation + Suche)
+
+Zwei der vier Host-Dienste laufen inzwischen als **ein** Container — der erste
+Schritt Richtung Portainer:
+
+```
+Stack mvd-ui          compose/ui/docker-compose.yml + ui/Dockerfile
+  am2scale-ui         ein Prozess, zwei Dienste (ui/serve_all.py in Threads)
+    docs      :5190   Route docs.localhost
+    discovery :5185   Netzwerk-Alias discovery
+  Volume ui-data      Knowledge Graph + Vektorindex
+```
+
+Image bauen (vom Repo-Root, weil die Doku auch von außerhalb `ui/` kommt):
+
+```powershell
+podman build -t am2scale-ui:latest -f ui\Dockerfile .
+```
+
+`.uild-images.ps1` macht das mit; `.\start-dataspace.ps1` fährt den Stack
+zusammen mit den übrigen hoch. Rund 317 MB, das Embedding-Modell
+(`potion-base-8M`, 59 MB) ist eingebacken und `HF_HUB_OFFLINE=1` gesetzt — der
+Container braucht kein Netz.
+
+**Warum ein Container, nicht zwei:** so gewollt — ein Stack-Eintrag, ein Ding
+zum Starten. Die Dienste laufen in Threads, jeder auf eigenem Port. Fällt einer
+aus, beendet sich der Container, statt halb zu funktionieren; `restart:
+unless-stopped` fährt ihn wieder hoch. Der Healthcheck verlangt, dass **beide**
+antworten — er steht in der Compose-Datei, weil Podman OCI-Images baut und
+`HEALTHCHECK` aus dem Dockerfile dabei verworfen wird.
+
+**Doku aktualisieren:** die Markdown-Dateien sind im Image *und* zusätzlich
+read-only eingebunden. Eine Änderung an `ui/docs/content/*.md` oder `docs/*.md`
+wirkt daher sofort nach dem Neuladen der Seite — kein Rebuild. Der Rebuild ist
+nur nötig, wenn sich Python-Code unter `ui/` ändert.
+
+Interne Adressierung: der Container hängt im `dataspace`-Netz mit den Aliassen
+`docs` und `discovery`. Sobald das Portal ebenfalls hier einzieht, erreicht es
+die Suche als `http://discovery:5185`, und die auf dem Host veröffentlichten
+Ports 5185/5190 können weg. Bis dahin bleiben sie, damit das Portal als
+Host-Prozess und `import_dataset.py` unverändert weiterlaufen.
 
 ## Portainer-Deployment (später)
 

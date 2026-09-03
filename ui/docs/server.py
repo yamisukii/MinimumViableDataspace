@@ -19,6 +19,7 @@ services.
 """
 import html
 import json
+import os
 import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -425,14 +426,21 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-def main():
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5190
+def serve(port=None, host=None):
+    """Start the service. Host defaults to loopback; a container sets 0.0.0.0."""
+    port = int(port or os.environ.get("DOCS_PORT") or 5190)
+    host = host or os.environ.get("BIND_HOST") or "127.0.0.1"
     missing = [str(p.relative_to(REPO)) for _s, _g, _t, p, _u in DOCS if not p.exists()]
-    print(f"Docs service on http://127.0.0.1:{port}  ({len(DOCS)} Dokumente)")
+    print(f"Docs service on http://{host}:{port}  ({len(DOCS)} Dokumente)", flush=True)
     if missing:
-        print("  ! fehlende Dateien: " + ", ".join(missing))
-    print("  API: /api/docs · /api/docs/<slug> · /api/search?q=... · /api/health")
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+        print("  ! fehlende Dateien: " + ", ".join(missing), flush=True)
+    print("  API: /api/docs · /api/docs/<slug> · /api/search?q=... · /api/health",
+          flush=True)
+    ThreadingHTTPServer((host, port), Handler).serve_forever()
+
+
+def main():
+    serve(sys.argv[1] if len(sys.argv) > 1 else None)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,25 @@
+# Routes for the containerised host services (stack mvd-ui).
+# The container answers under the network aliases "docs" and "discovery".
+http:
+  routers:
+    docs:
+      rule: "Host(`docs.localhost`)"
+      entryPoints: [web]
+      service: docs
+
+    # internal callers use http://discovery:5185 directly; this route only
+    # exists so the dataset import can reach it by hostname as well
+    discovery:
+      rule: "Host(`discovery.localhost`)"
+      entryPoints: [web]
+      service: discovery
+
+  services:
+    docs:
+      loadBalancer:
+        servers:
+          - url: "http://docs:5190"
+    discovery:
+      loadBalancer:
+        servers:
+          - url: "http://discovery:5185"

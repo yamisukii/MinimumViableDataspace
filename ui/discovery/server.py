@@ -16,6 +16,7 @@ Persisted index: ui/discovery/index.json (vectors + metadata).
 """
 import json
 import math
+import os
 import sys
 import threading
 import urllib.parse
@@ -28,8 +29,11 @@ from model2vec import StaticModel
 ROOT = Path(__file__).parent
 SCHEMA = json.loads((ROOT / "kg-schema.json").read_text(encoding="utf-8"))
 SEARCHABLE = SCHEMA["searchableAttributes"]
-INDEX_FILE = ROOT / "index.json"
-KG_FILE = ROOT / "kg.json"
+# runtime state lives beside the code by default; in a container it is a volume
+DATA_DIR = Path(os.environ.get("DISCOVERY_DATA_DIR") or ROOT)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+INDEX_FILE = DATA_DIR / "index.json"
+KG_FILE = DATA_DIR / "kg.json"
 MODEL_NAME = "minishlab/potion-base-8M"
 
 # attribute -> tier / label / facet, flattened across all KG entities
@@ -497,11 +501,18 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-def main():
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5185
+def serve(port=None, host=None):
+    """Start the service. Host defaults to loopback; a container sets 0.0.0.0."""
+    port = int(port or os.environ.get("DISCOVERY_PORT") or 5185)
+    host = host or os.environ.get("BIND_HOST") or "127.0.0.1"
     load_index()
-    print(f"Discovery service on http://127.0.0.1:{port} ({len(INDEX)} entries indexed)")
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    print(f"Discovery service on http://{host}:{port} ({len(INDEX)} entries indexed)",
+          flush=True)
+    ThreadingHTTPServer((host, port), Handler).serve_forever()
+
+
+def main():
+    serve(sys.argv[1] if len(sys.argv) > 1 else None)
 
 
 if __name__ == "__main__":

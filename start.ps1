@@ -48,24 +48,20 @@ function Start-HostService($script, $title) {
     ) | Out-Null
 }
 
+# Discovery and Docs run as one container (stack mvd-ui), brought up by
+# start-dataspace.ps1. Only the portal is still a host process.
 Write-Host ""
-Start-HostService "start-discovery.ps1" "Discovery (:5185)"
-
-# the portal calls discovery, and discovery loads its embedding model first,
-# so wait for it to bind before starting the portal
-Write-Host "Waiting for Discovery on :5185 (loads the embedding model) ..."
-if (-not (Wait-Port 5185 120)) {
-    Write-Warning "Discovery did not bind :5185 within 120s - check its window for errors."
+Write-Host "Waiting for Discovery on :5185 (container loads the embedding model) ..."
+if (-not (Wait-Port 5185 150)) {
+    Write-Warning "Discovery did not bind :5185 - check:  podman logs am2scale-ui"
+}
+if (-not (Wait-Port 5190 30)) {
+    Write-Warning "Docs did not bind :5190 - check:  podman logs am2scale-ui"
 }
 
 Start-HostService "start-portal.ps1" "Portal (:5180)"
 if (-not (Wait-Port 5180 60)) {
     Write-Warning "Portal did not bind :5180 within 60s - check its window for errors."
-}
-
-Start-HostService "start-docs.ps1" "Docs (:5190)"
-if (-not (Wait-Port 5190 60)) {
-    Write-Warning "Docs did not bind :5190 within 60s - check its window for errors."
 }
 if ($WithOnboarding) {
     Start-HostService "start-onboarding.ps1" "Onboarding (:5175)"
@@ -76,22 +72,23 @@ if ($WithOnboarding) {
 
 Write-Host ""
 Write-Host "Status:"
-Write-Host "  Discovery  :5185  $(if (Test-Port 5185) {'up'} else {'DOWN'})"
-Write-Host "  Portal     :5180  $(if (Test-Port 5180) {'up'} else {'DOWN'})"
-Write-Host "  Docs       :5190  $(if (Test-Port 5190) {'up'} else {'DOWN'})"
+Write-Host "  Discovery  :5185  $(if (Test-Port 5185) {'up'} else {'DOWN'})   (container am2scale-ui)"
+Write-Host "  Docs       :5190  $(if (Test-Port 5190) {'up'} else {'DOWN'})   (container am2scale-ui)"
+Write-Host "  Portal     :5180  $(if (Test-Port 5180) {'up'} else {'DOWN'})   (host process)"
 if ($WithOnboarding) { Write-Host "  Onboarding :5175  $(if (Test-Port 5175) {'up'} else {'DOWN'})" }
 
 Write-Host ""
 Write-Host "Open the portal:  http://127.0.0.1:5180"
 Write-Host "  Login: <firmenname> / password   (e.g. fha-wien)"
-Write-Host "Documentation:    http://127.0.0.1:5190"
+Write-Host "Documentation:    http://docs.localhost  (or http://127.0.0.1:5190)"
 Write-Host ""
-Write-Host "The host services run in their own windows - closing a window stops that"
-Write-Host "service. If a window did not open (e.g. when run from a non-interactive"
-Write-Host "shell), start them by hand:  compose\start-discovery.ps1, compose\start-portal.ps1,"
-Write-Host "compose\start-docs.ps1"
+Write-Host "Docs and Discovery live in the container am2scale-ui and keep running on"
+Write-Host "their own. The portal is still a window - closing it stops the portal. If"
+Write-Host "it did not open (e.g. from a non-interactive shell): compose\start-portal.ps1"
+Write-Host "For local work without containers there are still compose\start-docs.ps1 and"
+Write-Host "compose\start-discovery.ps1 - stop the container first, the ports collide."
 Write-Host ""
-Write-Host "The knowledge graph and its vectors persist in ui\discovery\kg.json, so search"
-Write-Host "works right after a restart. Rebuild it only after changing the dataset:"
+Write-Host "The knowledge graph persists in the volume mvd-ui_ui-data, so search works"
+Write-Host "right after a restart. Rebuild it only after changing the dataset:"
 Write-Host "  python ui\discovery\import_dataset.py --all"
 Write-Host "(Discovery's /health 'entries' counts portal-uploaded assets only - 0 is normal.)"

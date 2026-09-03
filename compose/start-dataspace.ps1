@@ -61,6 +61,10 @@ if (-not $companies) {
 }
 
 Write-Host ""
+Write-Host "Starting UI stack (documentation + discovery)..."
+podman compose -p mvd-ui -f (Join-Path $composeRoot "ui\docker-compose.yml") up -d
+
+Write-Host ""
 Write-Host "Container status:"
 podman ps --format "table {{.Names}}\t{{.Status}}"
 
@@ -72,3 +76,5 @@ Write-Host "Endpoints (via Traefik on port 80, no port-forward needed):"
 Write-Host "  Keycloak:  http://keycloak.localhost"
 Write-Host "  Issuer:    http://issuer.localhost"
 Write-Host "  Company:   http://cp.<name>.localhost/api/mgmt  (X-Api-Key: password)"
+Write-Host "  Docs:      http://docs.localhost   (also http://127.0.0.1:5190)"
+Write-Host "  Discovery: http://127.0.0.1:5185"

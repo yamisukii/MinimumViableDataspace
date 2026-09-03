@@ -61,8 +61,13 @@ podman build `
     .
 
 Write-Host ""
+Write-Host "Building UI image (documentation + discovery in one container)..."
+podman build -t am2scale-ui:latest -f .\ui\Dockerfile .
+
+Write-Host ""
 Write-Host "Images built:"
 podman images --filter "reference=localhost/mvd-*-local" --format "table {{.Repository}}\t{{.Tag}}\t{{.Created}}"
+podman images --filter "reference=localhost/am2scale-ui" --format "table {{.Repository}}\t{{.Tag}}\t{{.Created}}"
 
 Write-Host ""
 Write-Host "Next: .\start-dataspace.ps1  (running stacks need a recreate to pick up new images:"

@@ -23,8 +23,8 @@ Branch `feat/compose-dataspace`. Lauffähig und demonstrierbar:
 | **Knowledge Graph** | 113 Knoten aus dem echten AM2Scale-Datensatz, 9 Entitätstypen, Attribute einzeln nach Tier klassifiziert |
 | **Suche** | Semantische Vektorsuche (offline, model2vec) getrennt von strukturierten Filtern; jeder Treffer attributweise auf das Level des Betrachters beschnitten |
 
-**Bekannte Provisorien:** Portal, Discovery, Docs und Onboarding laufen als Host-Prozesse
-(nicht containerisiert); alle Passwörter sind Demo-Werte (`password`, Vault-Token
+**Bekannte Provisorien:** Discovery und Docs laufen als Container (`am2scale-ui`),
+Portal und Onboarding noch als Host-Prozesse; alle Passwörter sind Demo-Werte (`password`, Vault-Token
 `root`, Keycloak `admin/admin`); Vault entsiegelt sich selbst mit dem Key aus dem
 Volume; die Semantik-Freitexte in `data/material-semantik.json` sind Platzhalter
 und sollten durch echte Angaben ersetzt werden.
@@ -98,11 +98,11 @@ Alles unter `compose/`, plus ein Sammel-Skript im Root:
 | Skript | Zweck | Wann |
 |---|---|---|
 | `start.ps1` | Stacks + Discovery + Portal + Docs zusammen hochfahren | **der Normalfall** |
-| `compose/build-images.ps1` | `mvd-controlplane-local` / `mvd-dataplane-local` bauen | einmalig, und nach Java-Änderungen unter `launchers/` oder `extensions/` |
-| `compose/start-dataspace.ps1` | nur die Podman-Stacks (Infra + alle Firmen) | wenn man die UIs nicht braucht |
-| `compose/start-discovery.ps1` | Discovery-Service, KG + Vektorsuche (`:5185`) | wird vom Portal benötigt |
+| `compose/build-images.ps1` | Controlplane-, Dataplane- und `am2scale-ui`-Image bauen | einmalig, und nach Änderungen unter `launchers/`, `extensions/` oder `ui/` |
+| `compose/start-dataspace.ps1` | alle Podman-Stacks (Infra, Firmen, UI-Container) | wenn man das Portal nicht braucht |
+| `compose/start-discovery.ps1` | Discovery als Host-Prozess (`:5185`) | nur lokal ohne Container; im Normalfall läuft der Container |
 | `compose/start-portal.ps1` | Dataspace-Portal (`:5180`) | die Haupt-UI |
-| `compose/start-docs.ps1` | Dokumentationsdienst (`:5190`) | Handbuch und alle technischen Dokus |
+| `compose/start-docs.ps1` | Docs als Host-Prozess (`:5190`) | nur lokal ohne Container; im Normalfall läuft der Container |
 | `compose/start-onboarding.ps1` | Onboarding-/Registry-UI (`:5175`) | nur zum Anlegen neuer Firmen |
 | `compose/new-company.ps1` | dasselbe per CLI: `.\new-company.ps1 -Name mueller-gmbh` | Alternative zur Onboarding-UI |
 
@@ -127,10 +127,14 @@ Netzwerk "dataspace" (Podman, geteilt)
 │     filestore            nginx über companies/<firma>/storage/assets
 │     seed-*               One-Shots: DB, Vault, Identität, Assets/Policies
 │
+├── Stack mvd-ui           compose/ui/ + ui/Dockerfile
+│     am2scale-ui          ein Container, zwei Dienste (ui/serve_all.py)
+│       docs      :5190    Dokumentation + eigene API, Route docs.localhost
+│       discovery :5185    Knowledge Graph + Vektorsuche
+│     Volume ui-data       KG + Vektorindex, uebersteht Neustarts
+│
 └── Host-Prozesse (noch nicht containerisiert)
       portal    :5180      Multi-Tenant-UI
-      discovery :5185      Knowledge Graph + Vektorsuche
-      docs      :5190      Dokumentation + eigene API
       onboarding:5175      Registry + Anlegen neuer Firmen
 ```
 
@@ -148,7 +152,7 @@ Details zu Namensschema, Traefik-Routen, Portainer-Deployment und Troubleshootin
 |---|---|
 | Portal | `http://127.0.0.1:5180` (Login `<firmenname>` / `password`) |
 | Discovery | `http://127.0.0.1:5185` |
-| Dokumentation | `http://127.0.0.1:5190` (API: `/api/docs`, `/api/search?q=`, `/api/health`) |
+| Dokumentation | `http://docs.localhost` oder `http://127.0.0.1:5190` (API: `/api/docs`, `/api/search?q=`, `/api/health`) |
 | Onboarding | `http://127.0.0.1:5175` |
 | Management-API einer Firma | `http://cp.<name>.localhost/api/mgmt` (Header `X-Api-Key: password`) |
 | Dataplane Public | `http://dp.<name>.localhost/public/api/public` |
@@ -176,6 +180,8 @@ Details zu Namensschema, Traefik-Routen, Portainer-Deployment und Troubleshootin
 | `ui/portal/` | Dataspace-Portal (Python stdlib + Vanilla JS, keine Build-Kette) |
 | `ui/discovery/` | Discovery-Service, KG-Schema, `import_dataset.py`, `export_neo4j.py` |
 | `ui/docs/` | Dokumentationsdienst; `content/handbuch.md` ist das Anwenderhandbuch |
+| `ui/Dockerfile`, `ui/serve_all.py` | Image und Starter für den `am2scale-ui`-Container |
+| `compose/ui/` | Compose-Stack für diesen Container |
 | `launchers/` | EDC-Runtimes; `controlplane` und `dataplane` enthalten eigene Extensions und werden lokal gebaut, `identity-hub`/`issuerservice` kommen als Image von ghcr.io |
 | `extensions/` | Runtime-Abhängigkeiten der Launcher (Dataplane Public API v2, Dataplane-Registrierung) |
 | `data/` | Quelldatensatz `AM2Scale_Mini_Datensatz_erweitert.xlsx`, Semantik-Anreicherung, Demo-Foto |

@@ -316,24 +316,27 @@ Alles zusammen startet ein Befehl im Projektordner:
 .\start.ps1
 ```
 
-Das fährt die Container hoch und öffnet weitere Fenster für Suche, Portal und
-Dokumentation. Der Aufruf ist wiederholbar — nach einem Rechnerneustart einfach
-erneut ausführen. Alle Daten bleiben erhalten: Angebote, Verträge, Identitäten,
+Das fährt alle Container hoch und öffnet ein Fenster für das Portal. Suche und
+Dokumentation laufen inzwischen selbst als Container und brauchen kein Fenster.
+Der Aufruf ist wiederholbar — nach einem Rechnerneustart einfach erneut
+ausführen. Alle Daten bleiben erhalten: Angebote, Verträge, Identitäten,
 empfangene Dateien.
 
-| Dienst | Adresse | Wofür |
-|---|---|---|
-| Portal | `127.0.0.1:5180` | Die Hauptoberfläche |
-| Suche | `127.0.0.1:5185` | Läuft im Hintergrund, wird vom Portal benötigt |
-| Dokumentation | `127.0.0.1:5190` | Diese Anleitung und die technischen Dokus |
-| Onboarding | `127.0.0.1:5175` | Nur zum Anlegen neuer Unternehmen |
+| Dienst | Adresse | Läuft als | Wofür |
+|---|---|---|---|
+| Portal | `127.0.0.1:5180` | Fenster | Die Hauptoberfläche |
+| Suche | `127.0.0.1:5185` | Container | Wird vom Portal benötigt |
+| Dokumentation | `docs.localhost` oder `127.0.0.1:5190` | Container | Diese Anleitung und die technischen Dokus |
+| Onboarding | `127.0.0.1:5175` | Fenster | Nur zum Anlegen neuer Unternehmen |
 
-Die Hintergrundfenster gehören dazu: **Wird ein Fenster geschlossen, ist der
-Dienst weg.** Das Portal meldet dann Fehler bei der Suche. Einzeln nachstarten
-lassen sie sich mit `compose\start-discovery.ps1`, `compose\start-portal.ps1` und
-`compose\start-docs.ps1`.
+Suche und Dokumentation stecken zusammen im Container `am2scale-ui` und laufen
+von selbst weiter — die Doku bleibt also auch lesbar, wenn am Datenraum gerade
+etwas nicht stimmt.
 
-Zum Beenden genügt es, die Fenster zu schließen. Die Container laufen weiter und
+Beim **Portal** ist es anders: **wird das Fenster geschlossen, ist das Portal
+weg.** Nachstarten mit `compose\start-portal.ps1`.
+
+Zum Beenden genügt es, das Fenster zu schließen. Die Container laufen weiter und
 werden beim nächsten `.\start.ps1` wiederverwendet.
 
 ## Wenn etwas nicht geht
@@ -345,10 +348,11 @@ Prüfen, ob das Portal-Fenster noch offen ist. Wenn nicht:
 
 ### Die Suche liefert nichts oder meldet einen Fehler
 
-Der Suchdienst auf Port 5185 läuft nicht. Mit `compose\start-discovery.ps1`
-starten — der erste Start dauert einen Moment, weil das Sprachmodell geladen wird.
-Findet die Suche danach eigene Dateien nicht, im Reiter *Suche* auf *Reindex*
-klicken.
+Der Suchdienst läuft im Container `am2scale-ui`. Zustand prüfen mit
+`podman ps` — dort sollte er als *healthy* stehen; die Ausgabe holt
+`podman logs am2scale-ui`. Nach einem Start braucht er etwa 20 Sekunden, weil
+das Sprachmodell geladen wird. Findet die Suche danach eigene Dateien nicht, im
+Reiter *Suche* auf *Reindex* klicken.
 
 ### Anmeldung schlägt fehl
 
@@ -394,8 +398,9 @@ leistet:
 - **Zwei Werte im Datensatz sind auffällig falsch:** beim ABS-Schlüsselanhänger
   steht eine Norm für Edelstahl, und als Hersteller „Musterfirma". Das kommt aus
   der Quelldatei.
-- **Portal, Suche und Dokumentation laufen als Fenster auf dem Rechner**, nicht
-  als Dienste. Für einen Server-Betrieb müssten sie noch verpackt werden.
+- **Suche und Dokumentation laufen als Container**, das Portal und das
+  Onboarding noch als Fenster auf dem Rechner. Für einen vollständigen
+  Server-Betrieb fehlen noch diese zwei.
 
 > **Wichtig.** Die Zugriffssteuerung ist echt und wird an zwei Stellen unabhängig
 > durchgesetzt — die Oberfläche filtert, und die Connectoren prüfen zusätzlich
