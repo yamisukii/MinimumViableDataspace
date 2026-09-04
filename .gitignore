@@ -16,3 +16,9 @@ compose/companies/*/storage/
 # Runtime data: discovery vector index and knowledge graph
 ui/discovery/index.json
 ui/discovery/kg.json
+
+# Real partner data and generated exports: kept out of the repository on
+# purpose. The dataset is still needed locally by ui/discovery/import_dataset.py
+# and stays in the GitLab history (branch feat/compose-dataspace, up to f32d49e).
+data/*.xlsx
+exports/*.cypher

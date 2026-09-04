@@ -91,6 +91,9 @@ Den Knowledge Graph aus dem Datensatz aufbauen (Discovery muss laufen):
 python ui\discovery\import_dataset.py --all
 ```
 
+Das setzt `data/AM2Scale_Mini_Datensatz_erweitert.xlsx` voraus, die **nicht im
+Repo liegt** — siehe [Quelldatensatz](#quelldatensatz).
+
 ## Skripte
 
 Alles unter `compose/`, plus ein Sammel-Skript im Root:
@@ -184,11 +187,30 @@ Details zu Namensschema, Traefik-Routen, Portainer-Deployment und Troubleshootin
 | `compose/ui/` | Compose-Stack für diesen Container |
 | `launchers/` | EDC-Runtimes; `controlplane` und `dataplane` enthalten eigene Extensions und werden lokal gebaut, `identity-hub`/`issuerservice` kommen als Image von ghcr.io |
 | `extensions/` | Runtime-Abhängigkeiten der Launcher (Dataplane Public API v2, Dataplane-Registrierung) |
-| `data/` | Quelldatensatz `AM2Scale_Mini_Datensatz_erweitert.xlsx`, Semantik-Anreicherung, Demo-Foto |
+| `data/` | Semantik-Anreicherung und Demo-Foto. Der Quelldatensatz liegt **nicht** im Repo (s. u.) |
 | `exports/` | fertige Neo4j-Cypher-Exporte des KG je Level |
 | `docs/` | Projektdoku, siehe unten |
 | `Requests/` | Bruno-Collection gegen die Management-APIs |
 | `tests/end2end/` | EDC-E2E-Tests aus dem Upstream (laufen nicht gegen das Compose-Setup) |
+
+## Quelldatensatz
+
+`data/AM2Scale_Mini_Datensatz_erweitert.xlsx` und die erzeugten
+`exports/*.cypher` sind **nicht versioniert** — sie enthalten echte Partnerdaten
+(Preise, Lieferanten, Zeichnungsnummern, Maschinenzeitreihen).
+
+Für den Knowledge Graph wird die Datei lokal gebraucht: `import_dataset.py` liest
+sie aus `data/`. Ein frischer Klon hat sie nicht und kann den KG deshalb nicht
+neu aufbauen — im laufenden Betrieb ist das unkritisch, weil der Graph im Volume
+`mvd-ui_ui-data` liegt.
+
+Wer sie braucht, holt sie aus der Git-Historie dieses Projekts:
+
+```powershell
+git show f32d49e:data/AM2Scale_Mini_Datensatz_erweitert.xlsx > data\AM2Scale_Mini_Datensatz_erweitert.xlsx
+```
+
+Die `exports/*.cypher` erzeugt `ui\discovery\export_neo4j.py` jederzeit neu.
 
 ## Dokumentation
 
